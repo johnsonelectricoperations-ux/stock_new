@@ -2,12 +2,18 @@
 
 ## Phase 0. 환경 준비
 
-- [ ] KIS API 신청 및 앱키 발급 (한국투자증권 개발자 센터)
-- [ ] 모의투자 계좌 개설 및 모의 앱키 발급
-- [ ] Python 가상환경 구성 (`venv` 또는 `conda`)
-- [ ] 필수 라이브러리 설치 (`requests`, `websocket-client`, `pandas`, `schedule`)
-- [ ] KIS API Python SDK 설치 또는 직접 래퍼 작성
-- [ ] `.env` 파일로 앱키/시크릿 관리 구조 설정
+### 0-1. 사용자가 직접 해야 할 것 (계정/신청)
+- [ ] Oracle Cloud 계정 생성 (무료)
+- [ ] Oracle Cloud ARM 인스턴스(A1) 생성 — Ubuntu 22.04
+- [ ] 한국투자증권 계좌 개설 (없을 경우)
+- [ ] KIS Developers 앱키 발급 (모의투자용 먼저)
+- [ ] Oracle 서버 SSH 접속 확인
+
+### 0-2. Claude가 만들어주는 것 (코드/설정)
+- [ ] 서버 초기 세팅 스크립트 (Python, 라이브러리 설치)
+- [ ] 프로젝트 폴더 구조 생성
+- [ ] `.env` 파일 템플릿 (앱키 입력 안내 포함)
+- [ ] KIS API 인증 토큰 발급 및 자동 갱신 모듈
 
 ---
 
