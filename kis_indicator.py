@@ -8,7 +8,7 @@ from kis_auth import get_headers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def get_daily_ohlcv(stock_code, days=90):
+def get_daily_ohlcv(stock_code, days=120):
     url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice'
     headers = get_headers('FHKST03010100')
     end_date = datetime.today().strftime('%Y%m%d')
