@@ -62,7 +62,8 @@ def _analyze_stock(code):
         'detail': detail
     }
 
-def get_leading_sector_signals(top_sectors=3):
+def get_leading_sector_signals(top_sectors=3, save_log=False):
+    from datetime import datetime
     print('섯터별 모멘텀 분석 중... (약 2~3분 소요)\n')
 
     sector_results = {}
@@ -94,35 +95,62 @@ def get_leading_sector_signals(top_sectors=3):
     )
 
     signals = []
-    for sector, data in sorted_sectors[:top_sectors]:
-        print(f'[주도 섯터] {sector} 평균 {data["avg_score"]:+.2f}%')
+    scan_records = []
+    today = datetime.now().strftime('%Y-%m-%d')
 
-        # 섯터 내 모멘텀 1위 대장주만 선정
+    for rank, (sector, data) in enumerate(sorted_sectors, start=1):
+        print(f'[주도 섯터] {sector} 평균 {data["avg_score"]:+.2f}%')
+        sector_selected = False
+
         for code, name, result in data['stocks']:
             trend = '✅ 상승추세' if result['is_uptrend'] else '❌ 하락추세'
             print(f'  {name}({code}) {result["momentum"]:+.2f}% {trend}')
 
+            frgn_total = None
+            passed = False
+            selected = False
+
             if not result['is_uptrend']:
                 print(f'  → 하락추세 제외')
-                continue
+            else:
+                ok, frgn_total = is_foreign_buying(code)
+                label = f'{frgn_total:+,}백만원'
+                if not ok:
+                    print(f'  → 외국인 순매도 ({label}) 제외')
+                elif rank <= top_sectors and not sector_selected:
+                    passed = True
+                    selected = True
+                    sector_selected = True
+                    print(f'  → 외국인 순매수 ({label}) ✅ 대장주 선정')
+                    signals.append({
+                        'sector': sector,
+                        'code': code,
+                        'name': name,
+                        'momentum': result['momentum'],
+                        'detail': result['detail']
+                    })
+                else:
+                    passed = True  # 필터는 통과했지만 섹터당 1종목 제한으로 미선정
 
-            # 외국인 5일 순매수 필터
-            ok, frgn_total = is_foreign_buying(code)
-            label = f'{frgn_total:+,}백만원'
-            if not ok:
-                print(f'  → 외국인 순매도 ({label}) 제외')
-                continue
-
-            print(f'  → 외국인 순매수 ({label}) ✅ 대장주 선정')
-            signals.append({
+            scan_records.append({
+                'date': today,
                 'sector': sector,
+                'sector_rank': rank,
+                'sector_avg_momentum': data['avg_score'],
                 'code': code,
                 'name': name,
                 'momentum': result['momentum'],
-                'detail': result['detail']
+                'is_uptrend': result['is_uptrend'],
+                'foreign_5d_net_buy_mil': frgn_total,
+                'passed_all_filters': passed,
+                'selected': selected,
             })
-            break  # 섯터당 1종목만
+
         print()
+
+    if save_log and scan_records:
+        from performance import log_signal_scan
+        log_signal_scan(scan_records)
 
     return signals
 

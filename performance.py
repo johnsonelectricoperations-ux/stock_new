@@ -4,12 +4,34 @@ import os
 from datetime import datetime
 
 TRADE_LOG = 'trades.csv'
+SIGNAL_LOG = 'signal_log.csv'
+_SIGNAL_HEADERS = [
+    'date', 'sector', 'sector_rank', 'sector_avg_momentum',
+    'code', 'name', 'momentum', 'is_uptrend',
+    'foreign_5d_net_buy_mil', 'passed_all_filters', 'selected'
+]
 _HEADERS = [
     'exit_date', 'code', 'name', 'sector',
     'entry_date', 'entry_price', 'exit_price',
     'qty', 'profit', 'profit_rate', 'reason', 'hold_days'
 ]
 TOTAL_BUDGET = 10_000_000
+
+
+def log_signal_scan(scan_records: list):
+    """매일 신호 스캔 결과 전체를 signal_log.csv에 기록."""
+    exists = os.path.exists(SIGNAL_LOG)
+    with open(SIGNAL_LOG, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(_SIGNAL_HEADERS)
+        for r in scan_records:
+            writer.writerow([
+                r['date'], r['sector'], r['sector_rank'], r['sector_avg_momentum'],
+                r['code'], r['name'], r['momentum'], r['is_uptrend'],
+                r.get('foreign_5d_net_buy_mil', ''),
+                r['passed_all_filters'], r['selected'],
+            ])
 
 
 def log_trade(code, name, sector, entry_date, entry_price, exit_price, qty, reason):

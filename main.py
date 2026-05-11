@@ -52,7 +52,7 @@ def morning_routine():
         time.sleep(wait_seconds)
 
     try:
-        signals = get_leading_sector_signals(top_sectors=2)
+        signals = get_leading_sector_signals(top_sectors=2, save_log=True)
     except Exception as e:
         send_message(f'⚠️ 신호 생성 실패: {e}')
         return
