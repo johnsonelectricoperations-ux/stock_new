@@ -87,7 +87,11 @@ def get_leading_sector_signals(top_sectors=2):
     for sector, data in sorted_sectors[:top_sectors]:
         print(f'[주도 섯터] {sector} 평균 {data["avg_score"]:+.2f}%')
         for code, name, score in data['stocks']:
-            is_up, detail = check_trend(code)
+            try:
+                is_up, detail = check_trend(code)
+            except Exception:
+                print(f'  {name}({code}) {score:+.2f}% ⚠️ 조회 실패 제외')
+                continue
             trend = '✅ 상승추세' if is_up else '❌ 하락추세'
             print(f'  {name}({code}) {score:+.2f}% {trend}')
             if is_up:
