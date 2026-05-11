@@ -1,8 +1,11 @@
 # KIS API 접근 토큰 발급 및 자동 갱신 모듈
 import requests
 import json
+import urllib3
 from datetime import datetime, timedelta
-from config.settings import KIS_APP_KEY, KIS_APP_SECRET, KIS_BASE_URL
+from config.settings import KIS_APP_KEY, KIS_APP_SECRET, KIS_BASE_URL, KIS_IS_MOCK
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 _token_info = {
     'token': None,
@@ -21,7 +24,9 @@ def get_access_token():
         'appsecret': KIS_APP_SECRET
     }
 
-    res = requests.post(url, headers=headers, data=json.dumps(body))
+    # 모의투자 서버는 SSL 인증서 호스트명 불일치 문제가 있어 verify=False 사용
+    verify = not KIS_IS_MOCK
+    res = requests.post(url, headers=headers, data=json.dumps(body), verify=verify)
     res.raise_for_status()
     data = res.json()
 
