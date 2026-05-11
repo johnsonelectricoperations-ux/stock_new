@@ -80,7 +80,7 @@
 ## 기술 스택 (확정)
 
 - API: 한국투자증권 KIS API (REST + WebSocket, 공식 Python SDK)
-- 실행 환경: 미선택 (개인 PC Windows / 클라우드)
+- 실행 환경: AWS EC2 t2.micro (서울 리전, 1년 무료)
 - 언어: Python
 - 데이터 소스: KRX 실시간 프로그램 매매 공시 활용 예정
 
