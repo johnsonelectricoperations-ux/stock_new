@@ -39,9 +39,19 @@ def add_realized_pnl(amount: int):
     realized_pnl += amount
 
 
+def get_invested_capital() -> int:
+    """현재 보유 포지션에 묶인 투자금."""
+    return sum(pos['entry_price'] * pos['qty'] for pos in positions.values())
+
+
+def get_available_cash() -> int:
+    """실제 매수 가능한 가용 현금 (보유 포지션 투자금 차감)."""
+    return max(0, TOTAL_BUDGET + realized_pnl - get_invested_capital())
+
+
 def get_effective_budget() -> int:
-    """실현 손익 반영한 실제 운용 기준금."""
-    return max(TOTAL_BUDGET + realized_pnl, 1_000_000)  # 최소 100만원 보장
+    """총 운용 자산 (초기자금 + 실현손익)."""
+    return max(TOTAL_BUDGET + realized_pnl, 1_000_000)
 
 
 KOREAN_HOLIDAYS_2026 = {
@@ -88,29 +98,42 @@ def morning_routine():
     if wait_seconds > 0:
         time.sleep(wait_seconds)
 
+    # 신규 매수 가능 슬롯 및 가용 현금 계산
+    new_slots = MAX_STOCK_COUNT - len(positions)
+    available_cash = get_available_cash()
+
+    if new_slots <= 0:
+        send_message(f'포지션이 가득 찼습니다 ({len(positions)}/{MAX_STOCK_COUNT}종목). 매수 보류.')
+        return
+    if available_cash < 500_000:
+        send_message(f'가용 현금 부족 ({available_cash:,}원). 매수 보류.')
+        return
+
     try:
-        signals = get_leading_sector_signals(top_sectors=3, max_stocks=MAX_STOCK_COUNT, save_log=True)
+        signals = get_leading_sector_signals(top_sectors=3, max_stocks=new_slots, save_log=True)
     except Exception as e:
         send_message(f'⚠️ 신호 생성 실패: {e}')
         return
+
+    # 이미 보유 중인 종목 제외
+    signals = [s for s in signals if s['code'] not in positions]
 
     if not signals:
         send_message('오늘 매수 신호 없음. 매매 보류.')
         return
 
-    budget = get_effective_budget()
+    per_stock_budget = available_cash // len(signals)
     msg_lines = [
         f'확인 매수 신호 {len(signals)}종목',
-        f'운용 기준금: {budget:,}원 (초기 {TOTAL_BUDGET:,}원 + 실현손익 {realized_pnl:+,}원)'
+        f'가용현금: {available_cash:,}원 | 종목당: {per_stock_budget:,}원',
+        f'(총자산: {get_effective_budget():,}원 | 투자중: {get_invested_capital():,}원)'
     ]
 
     for s in signals:
         code = s['code']
-        if code in positions:
-            continue
         try:
             info = get_current_price(code)
-            qty = calc_quantity(info['price'], len(signals), effective_budget=budget)
+            qty = calc_quantity(info['price'], len(signals), effective_budget=available_cash)
             buy_stock(code, qty)
             positions[code] = {
                 'name': s['name'],
@@ -179,25 +202,52 @@ def daily_report():
     if not is_trading_day():
         return
 
-    lines = [f'일일 리포트 (누적 실현손익: {realized_pnl:+,}원)']
     total_unrealized = 0
+    lines = [f'장 마감 결산 ({datetime.now().strftime("%Y-%m-%d")})']
 
-    for code, pos in positions.items():
-        try:
-            info = get_current_price(code)
-            profit = (info['price'] - pos['entry_price']) * pos['qty']
-            rate   = (info['price'] - pos['entry_price']) / pos['entry_price'] * 100
-            total_unrealized += profit
-            lines.append(f"{pos['name']}: {rate:+.2f}% ({profit:+,}원)")
-        except Exception:
-            pass
-
-    if not positions:
-        lines.append('보유 종목 없음.')
+    # 보유 종목 현황
+    if positions:
+        lines.append('\n[보유 종목]')
+        for code, pos in positions.items():
+            try:
+                info = get_current_price(code)
+                profit = (info['price'] - pos['entry_price']) * pos['qty']
+                rate   = (info['price'] - pos['entry_price']) / pos['entry_price'] * 100
+                total_unrealized += profit
+                lines.append(f"  {pos['name']}: {rate:+.2f}% ({profit:+,}원)")
+            except Exception:
+                lines.append(f"  {pos['name']}: 조회 실패")
+        lines.append(f'  미실현 손익 합계: {total_unrealized:+,}원')
     else:
-        lines.append(f'\n미실현 수익 합계: {total_unrealized:+,}원')
+        lines.append('\n보유 종목 없음.')
 
-    lines.append(f'운용 기준금: {get_effective_budget():,}원')
+    # 자산 현황
+    invested = get_invested_capital()
+    available = get_available_cash()
+    total_asset = get_effective_budget()
+    lines.append(
+        f'\n[자산 현황]\n'
+        f'  총 운용자산: {total_asset:,}원\n'
+        f'  투자 중: {invested:,}원\n'
+        f'  가용 현금: {available:,}원\n'
+        f'  누적 실현손익: {realized_pnl:+,}원'
+    )
+
+    # 내일 매수 계획
+    new_slots = MAX_STOCK_COUNT - len(positions)
+    if new_slots > 0 and available >= 500_000:
+        per_stock = available // new_slots
+        lines.append(
+            f'\n[내일 매수 계획]\n'
+            f'  신규 매수 가능: {new_slots}종목\n'
+            f'  종목당 투자금: {per_stock:,}원\n'
+            f'  (가용현금 {available:,}원 ÷ {new_slots}종목)'
+        )
+    elif new_slots <= 0:
+        lines.append(f'\n[내일 매수 계획]\n  포지션 가득 ({MAX_STOCK_COUNT}/{MAX_STOCK_COUNT}). 신규 매수 없음.')
+    else:
+        lines.append(f'\n[내일 매수 계획]\n  가용 현금 부족 ({available:,}원). 신규 매수 보류.')
+
     send_message('\n'.join(lines))
 
 def run_scheduler():
