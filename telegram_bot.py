@@ -26,7 +26,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         '명령어 목록\n'
         '/status — 보유 종목 + 수익률\n'
         '/balance — 잔고 조회\n'
-        '/signal — 오늘 매수 신호 종목\n'
+        '/signal — 현재 매수 신호 종목 조회\n'
         '/buy 종목코드 수량\n'
         '/sell 종목코드 수량\n'
         '/sellall 종목코드\n'
@@ -43,23 +43,52 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('보유 중인 종목이 없습니다.')
         return
     from kis_data import get_current_price
-    lines = []
+    lines = ['보유 종목 현황']
     for code, pos in positions.items():
         try:
             info = get_current_price(code)
             rate = (info['price'] - pos['entry_price']) / pos['entry_price'] * 100
-            lines.append(f"{pos['name']}: {rate:+.2f}% ({info['price']:,}원)")
+            profit = (info['price'] - pos['entry_price']) * pos['qty']
+            lines.append(f"{pos['name']}({code})\n  {pos['qty']}주 | {rate:+.2f}% ({profit:+,}원)")
         except Exception:
             lines.append(f"{pos['name']}: 조회 실패")
     await update.message.reply_text('\n'.join(lines))
 
 async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
-    await update.message.reply_text('잔고 조회 기능은 추후 구현 예정입니다.')
+    await update.message.reply_text('잔고 조회 중...')
+    try:
+        from kis_balance import get_balance
+        b = get_balance()
+        lines = [
+            f'예수금: {b["cash"]:,}원',
+            f'주식 평가금: {b["eval_amt"]:,}원',
+            f'씽 평가액: {b["total_amt"]:,}원',
+            f'평가손익: {b["profit_loss"]:+,}원 ({b["profit_rate"]:+.2f}%)',
+        ]
+        if b['stocks']:
+            lines.append('\n보유 종목')
+            for s in b['stocks']:
+                lines.append(f"  {s['name']} {s['qty']}주 | {s['profit_rate']:+.2f}%")
+        await update.message.reply_text('\n'.join(lines))
+    except Exception as e:
+        await update.message.reply_text(f'잔고 조회 실패: {e}')
 
 async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
-    await update.message.reply_text('매일 장 시작 08:30에 신호를 분석합니다.')
+    await update.message.reply_text('신호 분석 중... (1~2분 소요)')
+    try:
+        from kis_sector import get_leading_sector_signals
+        signals = get_leading_sector_signals(top_sectors=2)
+        if not signals:
+            await update.message.reply_text('현재 매수 신호 없음.')
+            return
+        lines = [f'매수 신호 {len(signals)}종목']
+        for s in signals:
+            lines.append(f"[{s['sector']}] {s['name']}({s['code']})\n  모멘텀 {s['momentum']:+.2f}% | {s['detail']}")
+        await update.message.reply_text('\n'.join(lines))
+    except Exception as e:
+        await update.message.reply_text(f'신호 조회 실패: {e}')
 
 async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
@@ -74,7 +103,7 @@ async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
         buy_stock(code, qty)
         info = get_current_price(code)
         positions[code] = {'name': code, 'qty': qty, 'entry_price': info['price'], 'peak_price': info['price']}
-        await update.message.reply_text(f'{code} {qty}주 수동 매수 완료.')
+        await update.message.reply_text(f'{code} {qty}주 수동 매수 완료.\n{info["price"]:,}원 × {qty}주 = {info["price"]*qty:,}원')
     except Exception as e:
         await update.message.reply_text(f'매수 실패: {e}')
 

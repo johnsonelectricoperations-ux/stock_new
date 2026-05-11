@@ -1,0 +1,65 @@
+# KIS API 계좌 잔고 조회 모듈
+import requests
+import urllib3
+from config.settings import KIS_BASE_URL, KIS_IS_MOCK, KIS_CANO, KIS_ACNT_PRDT_CD
+from kis_auth import get_headers
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+def get_balance():
+    url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/trading/inquire-balance'
+    tr_id = 'VTTC8434R' if KIS_IS_MOCK else 'TTTC8434R'
+    headers = get_headers(tr_id)
+    params = {
+        'CANO': KIS_CANO,
+        'ACNT_PRDT_CD': KIS_ACNT_PRDT_CD,
+        'AFHR_FLPR_YN': 'N',
+        'OFL_YN': '',
+        'INQR_DVSN': '02',
+        'UNPR_DVSN': '01',
+        'FUND_STTL_ICLD_YN': 'N',
+        'FNCG_AMT_AUTO_RDPT_YN': 'N',
+        'PRCS_DVSN': '01',
+        'CTX_AREA_FK100': '',
+        'CTX_AREA_NK100': ''
+    }
+    verify = not KIS_IS_MOCK
+    res = requests.get(url, headers=headers, params=params, verify=verify)
+    res.raise_for_status()
+    data = res.json()
+
+    if data['rt_cd'] != '0':
+        raise Exception(f"API 오류: {data['msg1']}")
+
+    output2 = data.get('output2', [{}])[0]
+    stocks = data.get('output1', [])
+
+    return {
+        'cash': int(output2.get('dnca_tot_amt', 0)),
+        'eval_amt': int(output2.get('scts_evlu_amt', 0)),
+        'total_amt': int(output2.get('tot_evlu_amt', 0)),
+        'profit_loss': int(output2.get('evlu_pfls_smtl_amt', 0)),
+        'profit_rate': float(output2.get('asst_icdc_erng_rt', 0)),
+        'stocks': [
+            {
+                'name': s.get('prdt_name', ''),
+                'code': s.get('pdno', ''),
+                'qty': int(s.get('hldg_qty', 0)),
+                'avg_price': int(float(s.get('pchs_avg_pric', 0))),
+                'current_price': int(s.get('prpr', 0)),
+                'profit_rate': float(s.get('evlu_pfls_rt', 0))
+            }
+            for s in stocks if int(s.get('hldg_qty', 0)) > 0
+        ]
+    }
+
+if __name__ == '__main__':
+    b = get_balance()
+    print(f'예수금: {b["cash"]:,}원')
+    print(f'주식 평가금액: {b["eval_amt"]:,}원')
+    print(f'씽 평가액: {b["total_amt"]:,}원')
+    print(f'평가손익: {b["profit_loss"]:+,}원 ({b["profit_rate"]:+.2f}%)')
+    if b["stocks"]:
+        print('\n보유 종목')
+        for s in b["stocks"]:
+            print(f"  {s['name']}({s['code']}) {s['qty']}주 | 평단가 {s['avg_price']:,} | 현재가 {s['current_price']:,} | {s['profit_rate']:+.2f}%")
