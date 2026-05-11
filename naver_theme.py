@@ -66,8 +66,8 @@ def _fetch_theme_list() -> list:
 
         themes.append({'no': theme_no, 'name': theme_name, 'change_rate': change_rate})
 
-    if len(themes) < 50:
-        raise ValueError(f'테마 파싱 비정상 — {len(themes)}개 (50개 미만)')
+    if len(themes) < 20:
+        raise ValueError(f'테마 파싱 비정상 — {len(themes)}개 (20개 미만)')
     return themes
 
 
