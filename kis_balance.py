@@ -14,12 +14,12 @@ def get_balance():
         'CANO': KIS_CANO,
         'ACNT_PRDT_CD': KIS_ACNT_PRDT_CD,
         'AFHR_FLPR_YN': 'N',
-        'OFL_YN': '',
-        'INQR_DVSN': '02',
+        'OFL_YN': 'N',
+        'INQR_DVSN': '01',
         'UNPR_DVSN': '01',
         'FUND_STTL_ICLD_YN': 'N',
         'FNCG_AMT_AUTO_RDPT_YN': 'N',
-        'PRCS_DVSN': '01',
+        'PRCS_DVSN': '00',
         'CTX_AREA_FK100': '',
         'CTX_AREA_NK100': ''
     }
@@ -59,7 +59,9 @@ if __name__ == '__main__':
     print(f'주식 평가금액: {b["eval_amt"]:,}원')
     print(f'씽 평가액: {b["total_amt"]:,}원')
     print(f'평가손익: {b["profit_loss"]:+,}원 ({b["profit_rate"]:+.2f}%)')
-    if b["stocks"]:
+    if b['stocks']:
         print('\n보유 종목')
-        for s in b["stocks"]:
+        for s in b['stocks']:
             print(f"  {s['name']}({s['code']}) {s['qty']}주 | 평단가 {s['avg_price']:,} | 현재가 {s['current_price']:,} | {s['profit_rate']:+.2f}%")
+    else:
+        print('보유 종목 없음')
