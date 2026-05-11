@@ -27,6 +27,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         '/status — 보유 종목 + 수익률\n'
         '/balance — 운용 현황 조회\n'
         '/signal — 현재 매수 신호 종목 조회\n'
+        '/report — 누적 성과 리포트\n'
         '/buy 종목코드 수량\n'
         '/sell 종목코드 수량\n'
         '/sellall 종목코드\n'
@@ -86,6 +87,11 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text('\n'.join(lines))
 
+async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _check_auth(update): return
+    from performance import get_report
+    await update.message.reply_text(get_report())
+
 async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
     await update.message.reply_text('신호 분석 중... (1~2분 소요)')
@@ -127,7 +133,20 @@ async def cmd_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from kis_order import sell_stock
     code, qty = context.args[0], int(context.args[1])
     try:
+        from main import positions
+        from kis_data import get_current_price
+        from performance import log_trade
+        from datetime import datetime
+        info = get_current_price(code)
         sell_stock(code, qty)
+        if code in positions:
+            pos = positions[code]
+            log_trade(
+                code=code, name=pos['name'], sector=pos.get('sector', ''),
+                entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
+                entry_price=pos['entry_price'], exit_price=info['price'],
+                qty=qty, reason='수동매도',
+            )
         await update.message.reply_text(f'{code} {qty}주 수동 매도 완료.')
     except Exception as e:
         await update.message.reply_text(f'매도 실패: {e}')
@@ -144,7 +163,18 @@ async def cmd_sellall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f'{code} 보유중이 아닙니다.')
         return
     try:
-        sell_stock(code, positions[code]['qty'])
+        from kis_data import get_current_price
+        from performance import log_trade
+        from datetime import datetime
+        pos = positions[code]
+        info = get_current_price(code)
+        sell_stock(code, pos['qty'])
+        log_trade(
+            code=code, name=pos['name'], sector=pos.get('sector', ''),
+            entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
+            entry_price=pos['entry_price'], exit_price=info['price'],
+            qty=pos['qty'], reason='수동전량매도',
+        )
         del positions[code]
         await update.message.reply_text(f'{code} 전량매도 완료.')
     except Exception as e:
@@ -178,6 +208,7 @@ def build_app():
     app.add_handler(CommandHandler('status', cmd_status))
     app.add_handler(CommandHandler('balance', cmd_balance))
     app.add_handler(CommandHandler('signal', cmd_signal))
+    app.add_handler(CommandHandler('report', cmd_report))
     app.add_handler(CommandHandler('buy', cmd_buy))
     app.add_handler(CommandHandler('sell', cmd_sell))
     app.add_handler(CommandHandler('sellall', cmd_sellall))

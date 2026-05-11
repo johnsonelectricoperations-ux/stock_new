@@ -8,6 +8,7 @@ from kis_sector import get_leading_sector_signals
 from kis_order import buy_stock, sell_stock, calc_quantity
 from telegram_bot import send_message, is_paused, build_app
 from config.settings import STOP_LOSS_RATE, TRAIL_STOP_RATE, MAX_STOCK_COUNT
+from performance import log_trade
 
 # 보유 종목 저장소: {code: {name, qty, entry_price, peak_price}}
 positions = {}
@@ -73,8 +74,10 @@ def morning_routine():
             buy_stock(code, qty)
             positions[code] = {
                 'name': s['name'],
+                'sector': s['sector'],
                 'qty': qty,
                 'entry_price': info['price'],
+                'entry_date': datetime.now().strftime('%Y-%m-%d'),
                 'peak_price': info['price']
             }
             msg_lines.append(
@@ -112,6 +115,16 @@ def monitor_positions():
                 sell_stock(code, pos['qty'])
                 profit_rate = (price - entry) / entry * 100
                 reason = '손절' if price <= stop_loss_price else '트레일링 스탑'
+                log_trade(
+                    code=code,
+                    name=pos['name'],
+                    sector=pos.get('sector', ''),
+                    entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
+                    entry_price=entry,
+                    exit_price=price,
+                    qty=pos['qty'],
+                    reason=reason,
+                )
                 send_message(
                     f'[매도 체결] {pos["name"]} {price:,}원\n'
                     f'사유: {reason} | 수익률: {profit_rate:+.2f}%'
