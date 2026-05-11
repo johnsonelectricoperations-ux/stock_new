@@ -18,15 +18,22 @@ def _analyze_stock(code: str) -> dict | None:
     price_20d = df.iloc[-21]['close']
     momentum = (price - price_20d) / price_20d * 100
     is_uptrend = price > ma20 > ma60
-    detail = f'현재가 {price:,} | MA20 {int(ma20):,} | MA60 {int(ma60):,}'
+
+    # 전일 거래량 vs 20일 평균 거래량
+    avg_volume = df['volume'].iloc[-21:-1].mean()
+    prev_volume = df['volume'].iloc[-2]
+    volume_ok = avg_volume > 0 and prev_volume >= avg_volume
+
+    detail = f'현재가 {price:,} | MA20 {int(ma20):,} | MA60 {int(ma60):,} | 거래량 {"✅" if volume_ok else "❌"}'
     return {
         'momentum': round(momentum, 2),
         'is_uptrend': is_uptrend,
+        'volume_ok': volume_ok,
         'detail': detail,
     }
 
 
-def get_leading_sector_signals(top_sectors: int = 3, stocks_per_sector: int = 2, save_log: bool = False) -> list:
+def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_log: bool = False) -> list:
     from datetime import datetime
 
     # 네이버 테마 동적 수집 (3단계 방어 포함)
@@ -58,7 +65,7 @@ def get_leading_sector_signals(top_sectors: int = 3, stocks_per_sector: int = 2,
     theme_scores.sort(key=lambda x: -x[1])
     top_names = {t[0] for t in theme_scores[:top_sectors]}
 
-    signals = []
+    candidates = []  # 모든 필터 통과 종목 풀
     scan_records = []
     today = datetime.now().strftime('%Y-%m-%d')
 
@@ -66,38 +73,34 @@ def get_leading_sector_signals(top_sectors: int = 3, stocks_per_sector: int = 2,
         [t for t in theme_scores if t[0] in top_names], start=1
     ):
         print(f'[주도 테마 {rank}위] {theme_name} 평균 모멘텀 {avg_score:+.2f}%')
-        selected_count = 0
 
         for code, name, result in theme_stock_data[theme_name]:
-            trend_label = '✅ 상승추세' if result['is_uptrend'] else '❌ 하락추세'
-            print(f'  {name}({code}) {result["momentum"]:+.2f}% {trend_label}')
+            print(f'  {name}({code}) {result["momentum"]:+.2f}% '
+                  f'{"✅추세" if result["is_uptrend"] else "❌추세"} '
+                  f'{"✅거래량" if result["volume_ok"] else "❌거래량"}')
 
             frgn_total = None
             passed = False
-            selected = False
 
             if not result['is_uptrend']:
                 print('  → 하락추세 제외')
+            elif not result['volume_ok']:
+                print('  → 거래량 미달 제외')
             else:
                 ok, frgn_total = is_foreign_buying(code)
                 label = f'{frgn_total:+,}백만원'
                 if not ok:
                     print(f'  → 외국인 순매도 ({label}) 제외')
-                elif selected_count < stocks_per_sector:
+                else:
                     passed = True
-                    selected = True
-                    selected_count += 1
-                    print(f'  → 외국인 순매수 ({label}) ✅ 선정 ({selected_count}/{stocks_per_sector})')
-                    signals.append({
+                    print(f'  → 외국인 순매수 ({label}) ✅ 후보 등록')
+                    candidates.append({
                         'sector': theme_name,
                         'code': code,
                         'name': name,
                         'momentum': result['momentum'],
                         'detail': result['detail'],
                     })
-                else:
-                    passed = True
-                    print(f'  → 필터 통과 (테마당 {stocks_per_sector}종목 제한으로 미선정)')
 
             scan_records.append({
                 'date': today,
@@ -110,10 +113,23 @@ def get_leading_sector_signals(top_sectors: int = 3, stocks_per_sector: int = 2,
                 'is_uptrend': result['is_uptrend'],
                 'foreign_5d_net_buy_mil': frgn_total,
                 'passed_all_filters': passed,
-                'selected': selected,
+                'selected': False,  # 아래에서 갱신
             })
 
         print()
+
+    # 전체 후보 중 모멘텀 상위 max_stocks개 최종 선정
+    candidates.sort(key=lambda x: -x['momentum'])
+    signals = candidates[:max_stocks]
+
+    # scan_records selected 플래그 갱신
+    selected_codes = {s['code'] for s in signals}
+    for r in scan_records:
+        if r['code'] in selected_codes:
+            r['selected'] = True
+
+    if signals:
+        print(f'→ 최종 선정 {len(signals)}종목: {[s["name"] for s in signals]}')
 
     if save_log and scan_records:
         from performance import log_signal_scan

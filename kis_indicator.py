@@ -34,13 +34,30 @@ def get_daily_ohlcv(stock_code, days=120):
     for item in data[output_key]:
         if item.get('stck_clpr') and item['stck_clpr'] != '0':
             rows.append({
-                'date': item['stck_bsop_date'],
-                'close': int(item['stck_clpr'])
+                'date':   item['stck_bsop_date'],
+                'close':  int(item['stck_clpr']),
+                'volume': int(item.get('acml_vol', 0)),
             })
 
     df = pd.DataFrame(rows)
     df = df.sort_values('date').reset_index(drop=True)
     return df
+
+
+def check_market_trend():
+    """KOSPI 지수 MA60 필터 — KODEX 200 ETF(069500) 기준.
+    True: 상승장 (매수 허용) / False: 하락장 (매수 중단)
+    """
+    try:
+        df = get_daily_ohlcv('069500')
+        if len(df) < 60:
+            return True  # 데이터 부족 시 통과
+        df['ma60'] = df['close'].rolling(60).mean()
+        latest = df.iloc[-1]
+        return latest['close'] > latest['ma60']
+    except Exception:
+        return True  # 조회 실패 시 통과
+
 
 def check_trend(stock_code):
     df = get_daily_ohlcv(stock_code)
@@ -61,7 +78,10 @@ def check_trend(stock_code):
 
     return is_uptrend, detail
 
+
 if __name__ == '__main__':
+    is_bull = check_market_trend()
+    print(f'KOSPI 시장 추세: {"✅ 상승장" if is_bull else "❌ 하락장"}')
     code = '005930'
     is_up, detail = check_trend(code)
     print(f'[{code}] 추세 필터: {"✅ 상승추세" if is_up else "❌ 하락추세"}')

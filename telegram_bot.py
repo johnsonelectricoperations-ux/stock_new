@@ -133,7 +133,7 @@ async def cmd_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from kis_order import sell_stock
     code, qty = context.args[0], int(context.args[1])
     try:
-        from main import positions
+        from main import positions, add_realized_pnl
         from kis_data import get_current_price
         from performance import log_trade
         from datetime import datetime
@@ -141,13 +141,18 @@ async def cmd_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sell_stock(code, qty)
         if code in positions:
             pos = positions[code]
+            profit = (info['price'] - pos['entry_price']) * qty
+            add_realized_pnl(profit)
             log_trade(
                 code=code, name=pos['name'], sector=pos.get('sector', ''),
                 entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
                 entry_price=pos['entry_price'], exit_price=info['price'],
                 qty=qty, reason='수동매도',
             )
-        await update.message.reply_text(f'{code} {qty}주 수동 매도 완료.')
+            positions[code]['qty'] -= qty
+            if positions[code]['qty'] <= 0:
+                del positions[code]
+        await update.message.reply_text(f'{code} {qty}주 수동 매도 완료. 수익: {profit:+,}원')
     except Exception as e:
         await update.message.reply_text(f'매도 실패: {e}')
 
@@ -163,12 +168,15 @@ async def cmd_sellall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f'{code} 보유중이 아닙니다.')
         return
     try:
+        from main import add_realized_pnl
         from kis_data import get_current_price
         from performance import log_trade
         from datetime import datetime
         pos = positions[code]
         info = get_current_price(code)
         sell_stock(code, pos['qty'])
+        profit = (info['price'] - pos['entry_price']) * pos['qty']
+        add_realized_pnl(profit)
         log_trade(
             code=code, name=pos['name'], sector=pos.get('sector', ''),
             entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
@@ -176,7 +184,7 @@ async def cmd_sellall(update: Update, context: ContextTypes.DEFAULT_TYPE):
             qty=pos['qty'], reason='수동전량매도',
         )
         del positions[code]
-        await update.message.reply_text(f'{code} 전량매도 완료.')
+        await update.message.reply_text(f'{code} 전량매도 완료. 수익: {profit:+,}원')
     except Exception as e:
         await update.message.reply_text(f'매도 실패: {e}')
 

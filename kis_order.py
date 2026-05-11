@@ -50,9 +50,10 @@ def sell_stock(stock_code, quantity):
         raise Exception(f"매도 실패: {result.get('msg1')}")
     return result
 
-def calc_quantity(price, stock_count=None):
+def calc_quantity(price, stock_count=None, effective_budget=None):
     count = stock_count or MAX_STOCK_COUNT
-    budget_per_stock = TOTAL_BUDGET // count
+    budget = effective_budget if effective_budget is not None else TOTAL_BUDGET
+    budget_per_stock = budget // count
     return max(1, budget_per_stock // price)
 
 if __name__ == '__main__':
