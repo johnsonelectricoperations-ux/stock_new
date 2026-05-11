@@ -3,7 +3,7 @@ import requests as _requests
 import logging
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
-from config.settings import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
+from config.settings import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, TOTAL_BUDGET
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -25,7 +25,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = (
         '명령어 목록\n'
         '/status — 보유 종목 + 수익률\n'
-        '/balance — 잔고 조회\n'
+        '/balance — 운용 현황 조회\n'
         '/signal — 현재 매수 신호 종목 조회\n'
         '/buy 종목코드 수량\n'
         '/sell 종목코드 수량\n'
@@ -56,23 +56,35 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
-    await update.message.reply_text('잔고 조회 중...')
-    try:
-        from kis_balance import get_balance
-        b = get_balance()
-        lines = [
-            f'예수금: {b["cash"]:,}원',
-            f'주식 평가금: {b["eval_amt"]:,}원',
-            f'씽 평가액: {b["total_amt"]:,}원',
-            f'평가손익: {b["profit_loss"]:+,}원 ({b["profit_rate"]:+.2f}%)',
-        ]
-        if b['stocks']:
-            lines.append('\n보유 종목')
-            for s in b['stocks']:
-                lines.append(f"  {s['name']} {s['qty']}주 | {s['profit_rate']:+.2f}%")
-        await update.message.reply_text('\n'.join(lines))
-    except Exception as e:
-        await update.message.reply_text(f'잔고 조회 실패: {e}')
+    from main import positions
+    from kis_data import get_current_price
+
+    invested = 0
+    eval_amt = 0
+    profit_loss = 0
+    lines = [f'운용 현황 (운용규모: {TOTAL_BUDGET:,}원)']
+
+    for code, pos in positions.items():
+        try:
+            info = get_current_price(code)
+            cost = pos['entry_price'] * pos['qty']
+            value = info['price'] * pos['qty']
+            profit = value - cost
+            rate = profit / cost * 100
+            invested += cost
+            eval_amt += value
+            profit_loss += profit
+            lines.append(f"{pos['name']}: {rate:+.2f}% ({profit:+,}원)")
+        except Exception:
+            pass
+
+    remaining = TOTAL_BUDGET - invested
+    lines.append(f'\n투자금: {invested:,}원')
+    lines.append(f'평가금: {eval_amt:,}원')
+    lines.append(f'잔여예수금: {remaining:,}원')
+    lines.append(f'중 수익: {profit_loss:+,}원')
+
+    await update.message.reply_text('\n'.join(lines))
 
 async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
