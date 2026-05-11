@@ -7,7 +7,7 @@ from kis_auth import get_headers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def get_daily_ohlcv(stock_code, count=80):
+def get_daily_ohlcv(stock_code):
     url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-price'
     headers = get_headers('FHKST01010400')
     params = {
@@ -25,7 +25,7 @@ def get_daily_ohlcv(stock_code, count=80):
         raise Exception(f"API 오류: {data['msg1']}")
 
     rows = []
-    for item in data['output2']:
+    for item in data['output']:
         if item.get('stck_clpr') and item['stck_clpr'] != '0':
             rows.append({
                 'date': item['stck_bsop_date'],
