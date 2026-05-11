@@ -8,7 +8,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def get_current_price(stock_code):
     url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-price'
-    headers = get_headers('VTTC8434R' if KIS_IS_MOCK else 'FHKST01010100')
+    headers = get_headers('FHKST01010100')
     params = {
         'fid_cond_mrkt_div_code': 'J',
         'fid_input_iscd': stock_code
