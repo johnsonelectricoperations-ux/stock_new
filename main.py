@@ -10,7 +10,11 @@ from kis_sector import get_leading_sector_signals
 from kis_indicator import check_market_trend
 from kis_order import buy_stock, sell_stock, calc_quantity
 from telegram_bot import send_message, is_paused, build_app
-from config.settings import STOP_LOSS_RATE, TRAIL_STOP_RATE, MAX_STOCK_COUNT, TOTAL_BUDGET
+from config.settings import (
+    STOP_LOSS_RATE, TRAIL_STOP_RATE, MAX_STOCK_COUNT, TOTAL_BUDGET,
+    BREAK_EVEN_TRIGGER, BREAK_EVEN_FLOOR,
+    PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
+)
 from performance import log_trade
 
 # 보유 종목 저장소: {code: {name, sector, qty, entry_price, entry_date, peak_price}}
@@ -141,7 +145,10 @@ def morning_routine():
                 'qty': qty,
                 'entry_price': info['price'],
                 'entry_date': datetime.now().strftime('%Y-%m-%d'),
-                'peak_price': info['price']
+                'peak_price': info['price'],
+                'break_even_set': False,
+                'floor_price': 0,
+                'partial_sold': False,
             }
             msg_lines.append(
                 f"[매수 체결] {s['name']} {info['price']:,}원 × {qty}주"
@@ -152,6 +159,38 @@ def morning_routine():
             msg_lines.append(f"⚠️ {s['name']} 매수 실패: {e}")
 
     send_message('\n\n'.join(msg_lines))
+
+def _trading_days_held(entry_date_str: str) -> int:
+    """진입일 기준 경과 거래일 수 (달력일 × 5/7 근사)."""
+    try:
+        entry = datetime.strptime(entry_date_str, '%Y-%m-%d')
+        delta = (datetime.now() - entry).days
+        return max(0, int(delta * 5 / 7))
+    except Exception:
+        return 0
+
+
+def _do_sell(code: str, qty: int, price: int, reason: str):
+    """매도 실행 + PnL/로그/텔레그램 처리."""
+    pos = positions[code]
+    entry = pos['entry_price']
+    profit = (price - entry) * qty
+    profit_rate = (price - entry) / entry * 100
+    sell_stock(code, qty)
+    add_realized_pnl(profit)
+    log_trade(
+        code=code, name=pos['name'],
+        sector=pos.get('sector', ''),
+        entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
+        entry_price=entry, exit_price=price,
+        qty=qty, reason=reason,
+    )
+    send_message(
+        f'[매도 체결] {pos["name"]} {price:,}원\n'
+        f'사유: {reason} | 수익률: {profit_rate:+.2f}% ({profit:+,}원)\n'
+        f'누적 실현손익: {realized_pnl:+,}원'
+    )
+
 
 def monitor_positions():
     if not is_market_open():
@@ -164,34 +203,51 @@ def monitor_positions():
             pos = positions[code]
             info = get_current_price(code)
             price = info['price']
+            entry = pos['entry_price']
+            rate = (price - entry) / entry
 
+            # 고점 갱신
             if price > pos['peak_price']:
                 positions[code]['peak_price'] = price
+            peak = positions[code]['peak_price']
 
-            entry = pos['entry_price']
-            peak  = pos['peak_price']
+            # ── 단계 2: +20% 달성 → 50% 부분 익절 (1회)
+            if not pos.get('partial_sold') and rate >= PARTIAL_SELL_TRIGGER:
+                half_qty = max(1, pos['qty'] // 2)
+                _do_sell(code, half_qty, price, f'부분익절(+{rate*100:.1f}%)')
+                positions[code]['qty'] -= half_qty
+                positions[code]['partial_sold'] = True
+                positions[code]['peak_price'] = price  # 잔량 트레일링 기준 재설정
+                if positions[code]['qty'] <= 0:
+                    del positions[code]
+                time.sleep(0.3)
+                continue
+
+            # ── 단계 1: +7% 달성 → 본전 보호 스탑 발동
+            if not pos.get('break_even_set') and rate >= BREAK_EVEN_TRIGGER:
+                positions[code]['break_even_set'] = True
+                positions[code]['floor_price'] = entry * (1 + BREAK_EVEN_FLOOR)
+
+            # ── 매도 트리거 계산
             stop_loss_price  = entry * (1 - STOP_LOSS_RATE)
             trail_stop_price = peak  * (1 - TRAIL_STOP_RATE)
-            sell_price = max(stop_loss_price, trail_stop_price)
+            floor_price      = pos.get('floor_price', 0)
+            sell_trigger     = max(stop_loss_price, trail_stop_price, floor_price)
 
-            if price <= sell_price:
-                sell_stock(code, pos['qty'])
-                profit = (price - entry) * pos['qty']
-                profit_rate = (price - entry) / entry * 100
-                reason = '손절' if price <= stop_loss_price else '트레일링 스탑'
-                add_realized_pnl(profit)
-                log_trade(
-                    code=code, name=pos['name'],
-                    sector=pos.get('sector', ''),
-                    entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
-                    entry_price=entry, exit_price=price,
-                    qty=pos['qty'], reason=reason,
-                )
-                send_message(
-                    f'[매도 체결] {pos["name"]} {price:,}원\n'
-                    f'사유: {reason} | 수익률: {profit_rate:+.2f}% ({profit:+,}원)\n'
-                    f'누적 실현손익: {realized_pnl:+,}원'
-                )
+            # ── 단계 4: 시간 손절 (20거래일 경과 + 수익 <+5%)
+            days_held = _trading_days_held(pos.get('entry_date', ''))
+            time_stop = days_held >= TIME_STOP_DAYS and rate < TIME_STOP_MIN_RATE
+
+            if price <= sell_trigger or time_stop:
+                if time_stop and price > sell_trigger:
+                    reason = f'시간손절({days_held}거래일, {rate*100:+.1f}%)'
+                elif price <= stop_loss_price:
+                    reason = '손절'
+                elif floor_price and price <= floor_price:
+                    reason = '본전보호'
+                else:
+                    reason = '트레일링스탑'
+                _do_sell(code, pos['qty'], price, reason)
                 del positions[code]
 
             time.sleep(0.3)

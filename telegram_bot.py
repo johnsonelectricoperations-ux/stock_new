@@ -120,7 +120,12 @@ async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         buy_stock(code, qty)
         info = get_current_price(code)
-        positions[code] = {'name': code, 'qty': qty, 'entry_price': info['price'], 'peak_price': info['price']}
+        positions[code] = {
+            'name': code, 'qty': qty,
+            'entry_price': info['price'], 'peak_price': info['price'],
+            'entry_date': __import__('datetime').datetime.now().strftime('%Y-%m-%d'),
+            'break_even_set': False, 'floor_price': 0, 'partial_sold': False,
+        }
         await update.message.reply_text(f'{code} {qty}주 수동 매수 완료.\n{info["price"]:,}원 × {qty}주 = {info["price"]*qty:,}원')
     except Exception as e:
         await update.message.reply_text(f'매수 실패: {e}')
