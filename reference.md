@@ -44,6 +44,34 @@ ssh -i "C:\project_list\stock_auto\key\AWS\stock-bot.pem" ubuntu@서버IP주소
 
 ---
 
+## GitHub 최신 코드 서버에 반영 (배포)
+
+서버에 SSH로 접속한 후 아래 명령어를 순서대로 입력.
+
+```bash
+cd ~/stock-bot
+
+# 가상환경 활성화
+source venv/bin/activate
+
+# 최초 1회만 — beautifulsoup4 설치 (네이버 테마 크롤링용)
+pip install beautifulsoup4
+
+# GitHub에서 최신 코드 가져오기
+git fetch origin claude/file-modifications-main-ykk5n
+git reset --hard origin/claude/file-modifications-main-ykk5n
+
+# 봇 재시작
+sudo systemctl restart stock-bot
+
+# 재시작 확인
+sudo systemctl status stock-bot
+```
+
+`Active: active (running)` 이 나오면 정상 동작 중.
+
+---
+
 ## 상태 확인
 
 ```bash
@@ -58,6 +86,12 @@ sudo journalctl -u stock-bot --since today
 
 # 최근 50줄 로그 확인
 sudo journalctl -u stock-bot -n 50
+
+# 에러 로그 실시간 확인
+tail -f ~/stock-bot/error.log
+
+# 에러만 필터링
+grep ERROR ~/stock-bot/error.log
 ```
 
 ---
@@ -108,25 +142,6 @@ AWS 콘솔 → EC2 → 인스턴스 → 체크박스 선택 → 인스턴스 상
 
 ---
 
-## GitHub에서 최신 코드 서버에 반영
-
-서버에 접속한 후 아래 명령어 입력.
-
-```bash
-cd ~/stock-bot
-
-# beautifulsoup4 최초 1회 설치 (네이버 테마 크롤링용)
-source venv/bin/activate
-pip install beautifulsoup4
-
-# 최신 코드 반영
-git fetch origin claude/file-modifications-main-ykk5n
-git reset --hard origin/claude/file-modifications-main-ykk5n
-sudo systemctl restart stock-bot
-```
-
----
-
 ## 텔레그램 봇 명령어 요약
 
 | 명령어 | 기능 |
@@ -135,6 +150,8 @@ sudo systemctl restart stock-bot
 | `/balance` | 투자 현황 (현금 + 평가금액) |
 | `/signal` | 오늘 매수 신호 종목 조회 (5~10분 소요) |
 | `/report` | 누적 성과 리포트 (승률, MDD, 손익비 등) |
+| `/errors` | 최근 에러 10개 조회 |
+| `/errors 20` | 최근 에러 20개 조회 |
 | `/buy 종목코드 수량` | 즉시 매수 (예: `/buy 005930 1`) |
 | `/sell 종목코드 수량` | 즉시 매도 |
 | `/sellall 종목코드` | 해당 종목 전량 매도 |
@@ -154,6 +171,7 @@ sudo systemctl restart stock-bot
 | 네이버 테마 캐시 | `~/stock-bot/config/theme_cache.json` |
 | 거래 기록 | `~/stock-bot/trades.csv` |
 | 신호 스캔 기록 | `~/stock-bot/signal_log.csv` |
+| 에러 로그 | `~/stock-bot/error.log` |
 | 메인 프로그램 | `~/stock-bot/main.py` |
 | systemd 서비스 파일 | `/etc/systemd/system/stock-bot.service` |
 
@@ -168,3 +186,5 @@ sudo systemctl restart stock-bot
 | 봇 응답 없음 | 프로세스 중단 | `sudo systemctl restart stock-bot` |
 | SSH 접속 불가 | 서버 IP 변경 | AWS 콘솔에서 새 IP 확인 후 재접속 |
 | 토큰 오류 | KIS 토큰 만료 | `config/token_cache.json` 삭제 후 재시작 |
+| 텔레그램 에러 알림 수신 | 심각 에러 발생 | `/errors` 로 내용 확인 후 조치 |
+| 스케줄러 30분 무응답 알림 | 스레드 hang 또는 과부하 | `sudo systemctl restart stock-bot` |
