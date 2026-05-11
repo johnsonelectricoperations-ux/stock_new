@@ -52,7 +52,7 @@ def morning_routine():
         time.sleep(wait_seconds)
 
     try:
-        signals = get_leading_sector_signals(top_sectors=2, save_log=True)
+        signals = get_leading_sector_signals(top_sectors=3, stocks_per_sector=2, save_log=True)
     except Exception as e:
         send_message(f'⚠️ 신호 생성 실패: {e}')
         return
@@ -160,7 +160,7 @@ def daily_report():
     send_message('\n'.join(lines))
 
 def run_scheduler():
-    schedule.every().day.at('08:30').do(morning_routine)
+    schedule.every().day.at('08:00').do(morning_routine)
     schedule.every(5).minutes.do(monitor_positions)
     schedule.every().day.at('15:35').do(daily_report)
     while True:
