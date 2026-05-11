@@ -28,6 +28,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         '/balance — 운용 현황 조회\n'
         '/signal — 현재 매수 신호 종목 조회\n'
         '/report — 누적 성과 리포트\n'
+        '/errors [n] — 최근 에러 n개 조회 (기본 10)\n'
         '/buy 종목코드 수량\n'
         '/sell 종목코드 수량\n'
         '/sellall 종목코드\n'
@@ -91,6 +92,17 @@ async def cmd_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
     from performance import get_report
     await update.message.reply_text(get_report())
+
+async def cmd_errors(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _check_auth(update): return
+    from error_monitor import get_recent_errors
+    n = 10
+    if context.args:
+        try:
+            n = int(context.args[0])
+        except ValueError:
+            pass
+    await update.message.reply_text(get_recent_errors(n))
 
 async def cmd_signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not _check_auth(update): return
@@ -222,6 +234,7 @@ def build_app():
     app.add_handler(CommandHandler('balance', cmd_balance))
     app.add_handler(CommandHandler('signal', cmd_signal))
     app.add_handler(CommandHandler('report', cmd_report))
+    app.add_handler(CommandHandler('errors', cmd_errors))
     app.add_handler(CommandHandler('buy', cmd_buy))
     app.add_handler(CommandHandler('sell', cmd_sell))
     app.add_handler(CommandHandler('sellall', cmd_sellall))

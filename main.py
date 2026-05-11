@@ -16,12 +16,16 @@ from config.settings import (
     PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
 )
 from performance import log_trade
+from error_monitor import setup_logging, log_error, log_info, log_warning
 
 # 보유 종목 저장소: {code: {name, sector, qty, entry_price, entry_date, peak_price}}
 positions = {}
 
 # 실현 손익 누적 (복리 재투자 기준금 계산용)
 realized_pnl = 0
+
+# 스케줄러 마지막 정상 동작 시각 (헬스체크용)
+_last_heartbeat: float = 0.0
 
 
 def _load_realized_pnl() -> int:
@@ -89,11 +93,17 @@ def morning_routine():
 
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     send_message(f'[장 시작] {now}\n테마 수집 및 신호 분석 시작합니다...')
+    log_info('morning_routine', f'장 시작 루틴 실행 {now}')
 
     # 코스피 MA60 필터 — 하락장이면 매수 중단
-    if not check_market_trend():
-        send_message('⚠️ KOSPI 하락장 감지 (MA60 하향). 오늘 매수를 보류합니다.')
-        return
+    try:
+        if not check_market_trend():
+            send_message('⚠️ KOSPI 하락장 감지 (MA60 하향). 오늘 매수를 보류합니다.')
+            log_warning('morning_routine', 'KOSPI 하락장 감지 — 매수 보류')
+            return
+    except Exception as e:
+        log_error('morning_routine:check_market_trend', e)
+        send_message(f'⚠️ 시장 추세 확인 실패: {e}. 매수 진행합니다.')
 
     # 09:20 이후 주문 (장 초반 변동성 진정 후 진입)
     now_time = datetime.now()
@@ -116,6 +126,7 @@ def morning_routine():
     try:
         signals = get_leading_sector_signals(top_sectors=3, max_stocks=new_slots, save_log=True)
     except Exception as e:
+        log_error('morning_routine:get_leading_sector_signals', e, critical=True)
         send_message(f'⚠️ 신호 생성 실패: {e}')
         return
 
@@ -150,12 +161,14 @@ def morning_routine():
                 'floor_price': 0,
                 'partial_sold': False,
             }
+            log_info('morning_routine', f"매수 체결: {s['name']}({code}) {info['price']:,}원 × {qty}주")
             msg_lines.append(
                 f"[매수 체결] {s['name']} {info['price']:,}원 × {qty}주"
                 f"\n테마: {s['sector']} | 모멘텀: {s['momentum']:+.2f}%"
             )
             time.sleep(0.3)
         except Exception as e:
+            log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
             msg_lines.append(f"⚠️ {s['name']} 매수 실패: {e}")
 
     send_message('\n\n'.join(msg_lines))
@@ -185,6 +198,7 @@ def _do_sell(code: str, qty: int, price: int, reason: str):
         entry_price=entry, exit_price=price,
         qty=qty, reason=reason,
     )
+    log_info('sell', f"{pos['name']}({code}) {reason} {price:,}원 수익률 {profit_rate:+.2f}%")
     send_message(
         f'[매도 체결] {pos["name"]} {price:,}원\n'
         f'사유: {reason} | 수익률: {profit_rate:+.2f}% ({profit:+,}원)\n'
@@ -193,9 +207,11 @@ def _do_sell(code: str, qty: int, price: int, reason: str):
 
 
 def monitor_positions():
+    global _last_heartbeat
     if not is_market_open():
         return
     if is_paused() or not positions:
+        _last_heartbeat = time.time()
         return
 
     for code in list(positions.keys()):
@@ -251,8 +267,11 @@ def monitor_positions():
                 del positions[code]
 
             time.sleep(0.3)
-        except Exception:
-            pass
+        except Exception as e:
+            log_error(f'monitor_positions:{code}', e)
+
+    _last_heartbeat = time.time()
+
 
 def daily_report():
     if not is_trading_day():
@@ -271,7 +290,8 @@ def daily_report():
                 rate   = (info['price'] - pos['entry_price']) / pos['entry_price'] * 100
                 total_unrealized += profit
                 lines.append(f"  {pos['name']}: {rate:+.2f}% ({profit:+,}원)")
-            except Exception:
+            except Exception as e:
+                log_error(f'daily_report:get_current_price:{code}', e)
                 lines.append(f"  {pos['name']}: 조회 실패")
         lines.append(f'  미실현 손익 합계: {total_unrealized:+,}원')
     else:
@@ -305,18 +325,40 @@ def daily_report():
         lines.append(f'\n[내일 매수 계획]\n  가용 현금 부족 ({available:,}원). 신규 매수 보류.')
 
     send_message('\n'.join(lines))
+    log_info('daily_report', '장 마감 결산 전송 완료')
+
+
+def _heartbeat_watchdog():
+    """스케줄러 스레드가 멈췄는지 30분 주기로 감시."""
+    WATCHDOG_TIMEOUT = 1800  # 30분 동안 heartbeat 없으면 알림
+    while True:
+        time.sleep(WATCHDOG_TIMEOUT)
+        if not is_market_open():
+            continue
+        elapsed = time.time() - _last_heartbeat
+        if elapsed > WATCHDOG_TIMEOUT:
+            log_error('heartbeat_watchdog', critical=True,
+                      exc=Exception(f'스케줄러 응답 없음 — {int(elapsed//60)}분 경과'))
+
 
 def run_scheduler():
+    global _last_heartbeat
+    _last_heartbeat = time.time()
     schedule.every().day.at('08:00').do(morning_routine)
     schedule.every(5).minutes.do(monitor_positions)
     schedule.every().day.at('15:35').do(daily_report)
     while True:
-        schedule.run_pending()
+        try:
+            schedule.run_pending()
+        except Exception as e:
+            log_error('run_scheduler', e, critical=True)
         time.sleep(30)
 
 def main():
     global realized_pnl
+    setup_logging()
     realized_pnl = _load_realized_pnl()
+    log_info('main', f'시스템 시작. 실현손익={realized_pnl:+,}원')
     send_message(
         f'자동매매 시스템 시작. /help 로 명령어 확인.\n'
         f'누적 실현손익: {realized_pnl:+,}원 | 운용 기준금: {get_effective_budget():,}원'
@@ -324,6 +366,9 @@ def main():
 
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
+
+    watchdog_thread = threading.Thread(target=_heartbeat_watchdog, daemon=True)
+    watchdog_thread.start()
 
     print('시스템 동작 중... Ctrl+C 로 종료')
     app = build_app()
