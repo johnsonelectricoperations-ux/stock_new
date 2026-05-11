@@ -12,21 +12,57 @@ from config.settings import STOP_LOSS_RATE, TRAIL_STOP_RATE, MAX_STOCK_COUNT
 # 보유 종목 저장소: {code: {name, qty, entry_price, peak_price}}
 positions = {}
 
+KORAN_HOLIDAYS_2026 = {
+    '20260101', '20260127', '20260128', '20260129', '20260130',
+    '20260301', '20260505', '20260506', '20260525',
+    '20260606', '20260815', '20260930', '20261001', '20261002',
+    '20261003', '20261009', '20261225'
+}
+
+def is_trading_day():
+    now = datetime.now()
+    if now.weekday() >= 5:  # 토(5), 일(6)
+        return False
+    if now.strftime('%Y%m%d') in KORAN_HOLIDAYS_2026:
+        return False
+    return True
+
+def is_market_open():
+    if not is_trading_day():
+        return False
+    now = datetime.now()
+    market_open = now.replace(hour=9, minute=0, second=0, microsecond=0)
+    market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
+    return market_open <= now <= market_close
+
 def morning_routine():
+    if not is_trading_day():
+        return
     if is_paused():
         return
+
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     send_message(f'[장 시작] {now}\n신호 분석 시작합니다...')
+
+    # 실제 장 시작(09:00)을 짡맞춰 주문 실행
+    now_time = datetime.now()
+    wait_seconds = max(0, (now_time.replace(hour=9, minute=0, second=5) - now_time).seconds)
+    if wait_seconds > 0:
+        time.sleep(wait_seconds)
+
     try:
         signals = get_leading_sector_signals(top_sectors=2)
     except Exception as e:
         send_message(f'⚠️ 신호 생성 실패: {e}')
         return
+
     if not signals:
         send_message('오늘 매수 신호 없음. 매매 보류.')
         return
+
     signals = signals[:MAX_STOCK_COUNT]
     msg_lines = [f'확인 매수 신호 {len(signals)}종목']
+
     for s in signals:
         code = s['code']
         if code in positions:
@@ -48,23 +84,30 @@ def morning_routine():
             time.sleep(0.3)
         except Exception as e:
             msg_lines.append(f"⚠️ {s['name']} 매수 실패: {e}")
+
     send_message('\n\n'.join(msg_lines))
 
 def monitor_positions():
+    if not is_market_open():
+        return
     if is_paused() or not positions:
         return
+
     for code in list(positions.keys()):
         try:
             pos = positions[code]
             info = get_current_price(code)
             price = info['price']
+
             if price > pos['peak_price']:
                 positions[code]['peak_price'] = price
+
             entry = pos['entry_price']
             peak = pos['peak_price']
             stop_loss_price = entry * (1 - STOP_LOSS_RATE)
             trail_stop_price = peak * (1 - TRAIL_STOP_RATE)
             sell_price = max(stop_loss_price, trail_stop_price)
+
             if price <= sell_price:
                 sell_stock(code, pos['qty'])
                 profit_rate = (price - entry) / entry * 100
@@ -74,16 +117,22 @@ def monitor_positions():
                     f'사유: {reason} | 수익률: {profit_rate:+.2f}%'
                 )
                 del positions[code]
+
             time.sleep(0.3)
         except Exception:
             pass
 
 def daily_report():
+    if not is_trading_day():
+        return
+
     if not positions:
         send_message('장 종료. 보유 종목 없음.')
         return
+
     lines = ['일일 리포트']
     total_profit = 0
+
     for code, pos in positions.items():
         try:
             info = get_current_price(code)
@@ -93,6 +142,7 @@ def daily_report():
             lines.append(f"{pos['name']}: {rate:+.2f}% ({profit:+,}원)")
         except Exception:
             pass
+
     lines.append(f'\n중 수익 합계: {total_profit:+,}원')
     send_message('\n'.join(lines))
 
@@ -107,11 +157,9 @@ def run_scheduler():
 def main():
     send_message('자동매매 시스템 시작. /help 로 명령어 확인.')
 
-    # 스케줄러를 별도 스레드로 실행
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
 
-    # 텔레그램 봇을 메인 스레드에서 실행
     print('시스템 동작 중... Ctrl+C 로 종료')
     app = build_app()
     app.run_polling(stop_signals=None)
