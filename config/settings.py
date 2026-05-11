@@ -19,7 +19,7 @@ KIS_ACNT_PRDT_CD = _account[8:] if len(_account) > 8 else os.getenv('KIS_ACNT_PR
 
 # 운용 설정
 TOTAL_BUDGET = int(os.getenv('TOTAL_BUDGET', '10000000'))
-MAX_STOCK_COUNT = int(os.getenv('MAX_STOCK_COUNT', '3'))      # 섯터당 1종목, 최대 3섯터
+MAX_STOCK_COUNT = int(os.getenv('MAX_STOCK_COUNT', '6'))      # 테마당 2종목, 상위 3테마 = 최대 6종목
 STOP_LOSS_RATE = float(os.getenv('STOP_LOSS_RATE', '0.10'))
 TRAIL_STOP_RATE = float(os.getenv('TRAIL_STOP_RATE', '0.10'))
 
