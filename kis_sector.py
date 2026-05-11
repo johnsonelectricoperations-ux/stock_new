@@ -1,5 +1,7 @@
 # 섯터별 주도 섯터 판별 및 대장주 선정 모듈
-from kis_indicator import get_daily_ohlcv, check_trend
+import time
+import pandas as pd
+from kis_indicator import get_daily_ohlcv
 
 SECTORS = {
     '반도체': [
@@ -40,42 +42,54 @@ SECTORS = {
     ],
 }
 
-def _get_momentum(stock_code):
-    df = get_daily_ohlcv(stock_code)
-    if len(df) < 21:
+def _analyze_stock(code):
+    df = get_daily_ohlcv(code)
+    if len(df) < 60:
         return None
-    price_now = df.iloc[-1]['close']
+
+    df['ma20'] = df['close'].rolling(20).mean()
+    df['ma60'] = df['close'].rolling(60).mean()
+    latest = df.iloc[-1]
+
+    price = latest['close']
+    ma20 = latest['ma20']
+    ma60 = latest['ma60']
     price_20d = df.iloc[-21]['close']
-    return (price_now - price_20d) / price_20d * 100
 
-def analyze_sectors():
-    sector_results = {}
+    momentum = (price - price_20d) / price_20d * 100
+    is_uptrend = price > ma20 > ma60
+    detail = f'현재가 {price:,} | MA20 {int(ma20):,} | MA60 {int(ma60):,}'
 
-    for sector, stocks in SECTORS.items():
-        stock_scores = []
-        for code, name in stocks:
-            try:
-                score = _get_momentum(code)
-                if score is not None:
-                    stock_scores.append((code, name, round(score, 2)))
-            except Exception:
-                pass
-
-        if not stock_scores:
-            continue
-
-        avg_score = sum(s[2] for s in stock_scores) / len(stock_scores)
-        stock_scores.sort(key=lambda x: x[2], reverse=True)
-        sector_results[sector] = {
-            'avg_score': round(avg_score, 2),
-            'stocks': stock_scores
-        }
-
-    return sector_results
+    return {
+        'momentum': round(momentum, 2),
+        'is_uptrend': is_uptrend,
+        'detail': detail
+    }
 
 def get_leading_sector_signals(top_sectors=2):
-    print('섯터별 모멘텀 분석 중...\n')
-    sector_results = analyze_sectors()
+    print('섯터별 모멘텀 분석 중... (약 1~2분 소요)\n')
+
+    sector_results = {}
+    for sector, stocks in SECTORS.items():
+        stock_data = []
+        for code, name in stocks:
+            try:
+                result = _analyze_stock(code)
+                if result:
+                    stock_data.append((code, name, result))
+                time.sleep(0.3)
+            except Exception:
+                time.sleep(0.3)
+
+        if not stock_data:
+            continue
+
+        avg_score = sum(d[2]['momentum'] for d in stock_data) / len(stock_data)
+        stock_data.sort(key=lambda x: x[2]['momentum'], reverse=True)
+        sector_results[sector] = {
+            'avg_score': round(avg_score, 2),
+            'stocks': stock_data
+        }
 
     sorted_sectors = sorted(
         sector_results.items(),
@@ -86,21 +100,16 @@ def get_leading_sector_signals(top_sectors=2):
     signals = []
     for sector, data in sorted_sectors[:top_sectors]:
         print(f'[주도 섯터] {sector} 평균 {data["avg_score"]:+.2f}%')
-        for code, name, score in data['stocks']:
-            try:
-                is_up, detail = check_trend(code)
-            except Exception:
-                print(f'  {name}({code}) {score:+.2f}% ⚠️ 조회 실패 제외')
-                continue
-            trend = '✅ 상승추세' if is_up else '❌ 하락추세'
-            print(f'  {name}({code}) {score:+.2f}% {trend}')
-            if is_up:
+        for code, name, result in data['stocks']:
+            trend = '✅ 상승추세' if result['is_uptrend'] else '❌ 하락추세'
+            print(f'  {name}({code}) {result["momentum"]:+.2f}% {trend}')
+            if result['is_uptrend']:
                 signals.append({
                     'sector': sector,
                     'code': code,
                     'name': name,
-                    'momentum': score,
-                    'detail': detail
+                    'momentum': result['momentum'],
+                    'detail': result['detail']
                 })
         print()
 
