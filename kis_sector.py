@@ -1,7 +1,7 @@
 # 섯터별 주도 섯터 판별 및 대장주 선정 모듈
 import time
-import pandas as pd
 from kis_indicator import get_daily_ohlcv
+from kis_foreign import is_foreign_buying
 
 SECTORS = {
     '반도체': [
@@ -46,28 +46,24 @@ def _analyze_stock(code):
     df = get_daily_ohlcv(code)
     if len(df) < 60:
         return None
-
     df['ma20'] = df['close'].rolling(20).mean()
     df['ma60'] = df['close'].rolling(60).mean()
     latest = df.iloc[-1]
-
     price = latest['close']
     ma20 = latest['ma20']
     ma60 = latest['ma60']
     price_20d = df.iloc[-21]['close']
-
     momentum = (price - price_20d) / price_20d * 100
     is_uptrend = price > ma20 > ma60
     detail = f'현재가 {price:,} | MA20 {int(ma20):,} | MA60 {int(ma60):,}'
-
     return {
         'momentum': round(momentum, 2),
         'is_uptrend': is_uptrend,
         'detail': detail
     }
 
-def get_leading_sector_signals(top_sectors=2):
-    print('섯터별 모멘텀 분석 중... (약 1~2분 소요)\n')
+def get_leading_sector_signals(top_sectors=3):
+    print('섯터별 모멘텀 분석 중... (약 2~3분 소요)\n')
 
     sector_results = {}
     for sector, stocks in SECTORS.items():
@@ -100,23 +96,38 @@ def get_leading_sector_signals(top_sectors=2):
     signals = []
     for sector, data in sorted_sectors[:top_sectors]:
         print(f'[주도 섯터] {sector} 평균 {data["avg_score"]:+.2f}%')
+
+        # 섯터 내 모멘텀 1위 대장주만 선정
         for code, name, result in data['stocks']:
             trend = '✅ 상승추세' if result['is_uptrend'] else '❌ 하락추세'
             print(f'  {name}({code}) {result["momentum"]:+.2f}% {trend}')
-            if result['is_uptrend']:
-                signals.append({
-                    'sector': sector,
-                    'code': code,
-                    'name': name,
-                    'momentum': result['momentum'],
-                    'detail': result['detail']
-                })
+
+            if not result['is_uptrend']:
+                print(f'  → 하락추세 제외')
+                continue
+
+            # 외국인 5일 순매수 필터
+            ok, frgn_total = is_foreign_buying(code)
+            label = f'{frgn_total:+,}백만원'
+            if not ok:
+                print(f'  → 외국인 순매도 ({label}) 제외')
+                continue
+
+            print(f'  → 외국인 순매수 ({label}) ✅ 대장주 선정')
+            signals.append({
+                'sector': sector,
+                'code': code,
+                'name': name,
+                'momentum': result['momentum'],
+                'detail': result['detail']
+            })
+            break  # 섯터당 1종목만
         print()
 
     return signals
 
 if __name__ == '__main__':
-    signals = get_leading_sector_signals(top_sectors=2)
+    signals = get_leading_sector_signals(top_sectors=3)
     print('=' * 50)
     print(f'→ 최종 매수 신호 종목: {len(signals)}개')
     for s in signals:
