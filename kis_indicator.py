@@ -2,19 +2,24 @@
 import requests
 import urllib3
 import pandas as pd
+from datetime import datetime, timedelta
 from config.settings import KIS_BASE_URL, KIS_IS_MOCK
 from kis_auth import get_headers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def get_daily_ohlcv(stock_code):
-    url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-price'
-    headers = get_headers('FHKST01010400')
+def get_daily_ohlcv(stock_code, days=90):
+    url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice'
+    headers = get_headers('FHKST03010100')
+    end_date = datetime.today().strftime('%Y%m%d')
+    start_date = (datetime.today() - timedelta(days=days)).strftime('%Y%m%d')
     params = {
         'fid_cond_mrkt_div_code': 'J',
         'fid_input_iscd': stock_code,
-        'fid_org_adj_prc': '0',
-        'fid_period_div_code': 'D'
+        'fid_input_date_1': start_date,
+        'fid_input_date_2': end_date,
+        'fid_period_div_code': 'D',
+        'fid_org_adj_prc': '0'
     }
     verify = not KIS_IS_MOCK
     res = requests.get(url, headers=headers, params=params, verify=verify)
@@ -24,8 +29,9 @@ def get_daily_ohlcv(stock_code):
     if data['rt_cd'] != '0':
         raise Exception(f"API 오류: {data['msg1']}")
 
+    output_key = 'output2' if 'output2' in data else 'output'
     rows = []
-    for item in data['output']:
+    for item in data[output_key]:
         if item.get('stck_clpr') and item['stck_clpr'] != '0':
             rows.append({
                 'date': item['stck_bsop_date'],
