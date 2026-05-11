@@ -83,6 +83,12 @@ sudo systemctl is-enabled stock-bot
 
 ```bash
 cd ~/stock-bot
+
+# beautifulsoup4 최초 1회 설치 (네이버 테마 크롤링용)
+source venv/bin/activate
+pip install beautifulsoup4
+
+# 최신 코드 반영
 git fetch origin claude/file-modifications-main-ykk5n
 git reset --hard origin/claude/file-modifications-main-ykk5n
 sudo systemctl restart stock-bot
