@@ -5,7 +5,7 @@ import time
 import schedule
 import threading
 from datetime import datetime
-from kis_data import get_current_price
+from kis_data import get_current_price, get_minute_candles
 from kis_sector import get_leading_sector_signals
 from kis_indicator import check_market_trend
 from kis_order import buy_stock, sell_stock, calc_quantity
@@ -137,41 +137,91 @@ def morning_routine():
         send_message('오늘 매수 신호 없음. 매매 보류.')
         return
 
-    per_stock_budget = available_cash // len(signals)
+    total_signals = len(signals)
+    per_stock_budget = available_cash // total_signals
     msg_lines = [
-        f'확인 매수 신호 {len(signals)}종목',
+        f'확인 매수 신호 {total_signals}종목 — 눌림목 진입 대기',
         f'가용현금: {available_cash:,}원 | 종목당: {per_stock_budget:,}원',
         f'(총자산: {get_effective_budget():,}원 | 투자중: {get_invested_capital():,}원)'
     ]
 
-    for s in signals:
-        code = s['code']
-        try:
-            info = get_current_price(code)
-            qty = calc_quantity(info['price'], len(signals), effective_budget=available_cash)
-            buy_stock(code, qty)
-            positions[code] = {
-                'name': s['name'],
-                'sector': s['sector'],
-                'qty': qty,
-                'entry_price': info['price'],
-                'entry_date': datetime.now().strftime('%Y-%m-%d'),
-                'peak_price': info['price'],
-                'break_even_set': False,
-                'floor_price': 0,
-                'partial_sold': False,
-            }
-            log_info('morning_routine', f"매수 체결: {s['name']}({code}) {info['price']:,}원 × {qty}주")
-            msg_lines.append(
-                f"[매수 체결] {s['name']} {info['price']:,}원 × {qty}주"
-                f"\n테마: {s['sector']} | 모멘텀: {s['momentum']:+.2f}%"
-            )
-            time.sleep(0.3)
-        except Exception as e:
-            log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
-            msg_lines.append(f"⚠️ {s['name']} 매수 실패: {e}")
+    # 09:10~09:30 눌림목 진입 루프 (1분 주기, 전 종목 동시 체크)
+    deadline = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
+    pending = list(signals)  # 아직 매수 안 된 종목
+
+    while pending:
+        still_pending = []
+        for s in list(pending):
+            code = s['code']
+            try:
+                if _check_dip_entry(code):
+                    msg_lines.append(_execute_buy(s, available_cash, total_signals))
+                else:
+                    still_pending.append(s)
+                    log_info('morning_routine', f"{s['name']} 눌림목 조건 미충족 — 다음 분 재확인")
+                time.sleep(0.3)
+            except Exception as e:
+                log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
+                msg_lines.append(f"⚠️ {s['name']} 매수 실패: {e}")
+
+        pending = still_pending
+        if pending:
+            if datetime.now() >= deadline:
+                # 09:30 초과 — 남은 종목 강제 시장가 매수
+                log_info('morning_routine', f'09:30 초과 — {len(pending)}종목 강제 매수')
+                for s in pending:
+                    try:
+                        msg_lines.append(_execute_buy(s, available_cash, total_signals))
+                        time.sleep(0.3)
+                    except Exception as e:
+                        log_error(f'morning_routine:force_buy:{s["code"]}', e, critical=True)
+                        msg_lines.append(f"⚠️ {s['name']} 강제 매수 실패: {e}")
+                break
+            time.sleep(60)  # 1분 대기 후 재확인
 
     send_message('\n\n'.join(msg_lines))
+
+def _check_dip_entry(code: str) -> bool:
+    """눌림목 진입 조건 확인.
+    조건: 현재가 > 직전 1분봉 고가 (상승 전환) AND 현재가 > 최근 5분 종가 평균
+    데이터 부족 or API 실패 시 True 반환 (즉시 진입)
+    """
+    try:
+        candles = get_minute_candles(code, count=10)
+        if len(candles) < 6:
+            return True
+        current   = candles[0]['close']
+        prev_high = candles[1]['high']
+        ma5       = sum(c['close'] for c in candles[1:6]) / 5
+        result = current > prev_high and current > ma5
+        return result
+    except Exception:
+        return True  # 조회 실패 시 즉시 진입
+
+
+def _execute_buy(s: dict, available_cash: int, total_signals: int) -> str:
+    """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환."""
+    code = s['code']
+    info = get_current_price(code)
+    qty = calc_quantity(info['price'], total_signals, effective_budget=available_cash)
+    buy_stock(code, qty)
+    positions[code] = {
+        'name': s['name'],
+        'sector': s['sector'],
+        'qty': qty,
+        'entry_price': info['price'],
+        'entry_date': datetime.now().strftime('%Y-%m-%d'),
+        'peak_price': info['price'],
+        'break_even_set': False,
+        'floor_price': 0,
+        'partial_sold': False,
+    }
+    log_info('morning_routine', f"매수 체결: {s['name']}({code}) {info['price']:,}원 × {qty}주")
+    return (
+        f"[매수 체결] {s['name']} {info['price']:,}원 × {qty}주"
+        f"\n테마: {s['sector']} | 모멘텀: {s['momentum']:+.2f}%"
+    )
+
 
 def _trading_days_held(entry_date_str: str) -> int:
     """진입일 기준 경과 거래일 수 (달력일 × 5/7 근사)."""

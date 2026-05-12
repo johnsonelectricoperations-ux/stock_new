@@ -51,6 +51,39 @@ def get_current_price(stock_code):
         'volume': int(output['acml_vol'])
     }
 
+def get_minute_candles(stock_code: str, count: int = 10) -> list:
+    """최근 1분봉 count개 반환. 최신 순 정렬 [{time, high, close, volume}, ...]"""
+    from datetime import datetime as _dt
+    url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice'
+    headers = get_headers('FHKST03010200')
+    params = {
+        'fid_cond_mrkt_div_code': 'J',
+        'fid_input_iscd': stock_code,
+        'fid_input_hour_1': _dt.now().strftime('%H%M%S'),
+        'fid_etc_cls_code': '0',
+        'fid_pw_data_incu_yn': 'Y',
+    }
+    verify = not KIS_IS_MOCK
+    res = _get_with_retry(url, headers, params, verify)
+    data = res.json()
+
+    if data['rt_cd'] != '0':
+        raise Exception(f"API 오류: {data['msg1']}")
+
+    candles = []
+    for item in data.get('output2', [])[:count]:
+        try:
+            candles.append({
+                'time':   item.get('stck_cntg_hour', ''),
+                'high':   int(item.get('stck_hgpr', item.get('stck_prpr', 0))),
+                'close':  int(item.get('stck_prpr', 0)),
+                'volume': int(item.get('cntg_vol', 0)),
+            })
+        except (ValueError, TypeError):
+            continue
+    return candles
+
+
 if __name__ == '__main__':
     result = get_current_price('005930')
     print(f"[{result['code']}] {result['name']}")
