@@ -14,6 +14,7 @@ from config.settings import (
     STOP_LOSS_RATE, TRAIL_STOP_RATE, MAX_STOCK_COUNT, TOTAL_BUDGET,
     BREAK_EVEN_TRIGGER, BREAK_EVEN_FLOOR,
     PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
+    EMERGENCY_STOP_RATE, MOMENTUM_EXIT_RATE,
 )
 from performance import log_trade
 from error_monitor import setup_logging, log_error, log_info, log_warning
@@ -199,6 +200,21 @@ def _check_dip_entry(code: str) -> bool:
         return True  # 조회 실패 시 즉시 진입
 
 
+def _get_candle_sell_info(code: str) -> dict | None:
+    """매도 판단용 1분봉 정보. 실패 시 None 반환 (None이면 현재가 기준으로 폴백)."""
+    try:
+        candles = get_minute_candles(code, count=10)
+        if len(candles) < 6:
+            return None
+        return {
+            'prev_close': candles[1]['close'],                          # 직전 완성봉 종가
+            'prev_low':   candles[1]['low'],                            # 직전 완성봉 저가
+            'ma5':        sum(c['close'] for c in candles[1:6]) / 5,   # 5분 MA
+        }
+    except Exception:
+        return None
+
+
 def _execute_buy(s: dict, available_cash: int, total_signals: int) -> str:
     """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환."""
     code = s['code']
@@ -270,26 +286,46 @@ def monitor_positions():
             info = get_current_price(code)
             price = info['price']
             entry = pos['entry_price']
-            rate = (price - entry) / entry
+            rate  = (price - entry) / entry
 
             # 고점 갱신
             if price > pos['peak_price']:
                 positions[code]['peak_price'] = price
             peak = positions[code]['peak_price']
 
-            # ── 단계 2: +20% 달성 → 50% 부분 익절 (1회)
+            # ── 긴급 손절: -15% 이상 → 캔들 확인 없이 즉시 매도
+            if rate <= -EMERGENCY_STOP_RATE:
+                _do_sell(code, pos['qty'], price, f'긴급손절({rate*100:+.1f}%)')
+                del positions[code]
+                time.sleep(0.3)
+                continue
+
+            # ── 1분봉 정보 조회 (없으면 현재가로 폴백)
+            candle = _get_candle_sell_info(code)
+            prev_close = candle['prev_close'] if candle else price
+            prev_low   = candle['prev_low']   if candle else price
+            ma5        = candle['ma5']         if candle else price
+
+            # ── 모멘텀 약화 조기 익절: +10% 이상 + 1분봉 하락 전환
+            if rate >= MOMENTUM_EXIT_RATE and price < prev_low and price < ma5:
+                _do_sell(code, pos['qty'], price, f'모멘텀약화({rate*100:+.1f}%)')
+                del positions[code]
+                time.sleep(0.3)
+                continue
+
+            # ── 부분 익절: +20% → 50% 매도 (1회)
             if not pos.get('partial_sold') and rate >= PARTIAL_SELL_TRIGGER:
                 half_qty = max(1, pos['qty'] // 2)
                 _do_sell(code, half_qty, price, f'부분익절(+{rate*100:.1f}%)')
                 positions[code]['qty'] -= half_qty
                 positions[code]['partial_sold'] = True
-                positions[code]['peak_price'] = price  # 잔량 트레일링 기준 재설정
+                positions[code]['peak_price'] = price
                 if positions[code]['qty'] <= 0:
                     del positions[code]
                 time.sleep(0.3)
                 continue
 
-            # ── 단계 1: +7% 달성 → 본전 보호 스탑 발동
+            # ── 본전 보호 스탑 발동
             if not pos.get('break_even_set') and rate >= BREAK_EVEN_TRIGGER:
                 positions[code]['break_even_set'] = True
                 positions[code]['floor_price'] = entry * (1 + BREAK_EVEN_FLOOR)
@@ -300,19 +336,22 @@ def monitor_positions():
             floor_price      = pos.get('floor_price', 0)
             sell_trigger     = max(stop_loss_price, trail_stop_price, floor_price)
 
-            # ── 단계 4: 시간 손절 (20거래일 경과 + 수익 <+5%)
+            # ── 시간 손절
             days_held = _trading_days_held(pos.get('entry_date', ''))
             time_stop = days_held >= TIME_STOP_DAYS and rate < TIME_STOP_MIN_RATE
 
-            if price <= sell_trigger or time_stop:
-                if time_stop and price > sell_trigger:
+            # ── 캔들 종가 확인 매도 (whipsaw 방지)
+            candle_confirmed = prev_close <= sell_trigger
+
+            if candle_confirmed or time_stop:
+                if time_stop and not candle_confirmed:
                     reason = f'시간손절({days_held}거래일, {rate*100:+.1f}%)'
-                elif price <= stop_loss_price:
-                    reason = '손절'
-                elif floor_price and price <= floor_price:
-                    reason = '본전보호'
+                elif prev_close <= stop_loss_price:
+                    reason = '손절(캔들확인)'
+                elif floor_price and prev_close <= floor_price:
+                    reason = '본전보호(캔들확인)'
                 else:
-                    reason = '트레일링스탑'
+                    reason = '트레일링스탑(캔들확인)'
                 _do_sell(code, pos['qty'], price, reason)
                 del positions[code]
 

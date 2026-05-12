@@ -76,6 +76,7 @@ def get_minute_candles(stock_code: str, count: int = 10) -> list:
             candles.append({
                 'time':   item.get('stck_cntg_hour', ''),
                 'high':   int(item.get('stck_hgpr', item.get('stck_prpr', 0))),
+                'low':    int(item.get('stck_lwpr', item.get('stck_prpr', 0))),
                 'close':  int(item.get('stck_prpr', 0)),
                 'volume': int(item.get('cntg_vol', 0)),
             })
