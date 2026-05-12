@@ -139,7 +139,7 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
 
 
 if __name__ == '__main__':
-    signals = get_leading_sector_signals(top_sectors=3, stocks_per_sector=2)
+    signals = get_leading_sector_signals(top_sectors=3, max_stocks=4)
     print('=' * 50)
     print(f'→ 최종 매수 신호 종목: {len(signals)}개')
     for s in signals:

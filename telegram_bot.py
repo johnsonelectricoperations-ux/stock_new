@@ -1,6 +1,7 @@
 # 텔레그램 봇 알림 및 명령어 처리 모듈
 import requests as _requests
 import logging
+from datetime import datetime
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 from config.settings import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, TOTAL_BUDGET
@@ -128,14 +129,19 @@ async def cmd_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from kis_order import buy_stock
     from main import positions
     from kis_data import get_current_price
-    code, qty = context.args[0], int(context.args[1])
+    try:
+        qty = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text('수량은 숫자로 입력하세요.\n예: /buy 005930 10')
+        return
+    code = context.args[0]
     try:
         buy_stock(code, qty)
         info = get_current_price(code)
         positions[code] = {
             'name': code, 'qty': qty,
             'entry_price': info['price'], 'peak_price': info['price'],
-            'entry_date': __import__('datetime').datetime.now().strftime('%Y-%m-%d'),
+            'entry_date': datetime.now().strftime('%Y-%m-%d'),
             'break_even_set': False, 'floor_price': 0, 'partial_sold': False,
         }
         await update.message.reply_text(f'{code} {qty}주 수동 매수 완료.\n{info["price"]:,}원 × {qty}주 = {info["price"]*qty:,}원')
@@ -148,7 +154,12 @@ async def cmd_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text('사용법: /sell 종목코드 수량\n예: /sell 005930 10')
         return
     from kis_order import sell_stock
-    code, qty = context.args[0], int(context.args[1])
+    try:
+        qty = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text('수량은 숫자로 입력하세요.\n예: /sell 005930 10')
+        return
+    code = context.args[0]
     try:
         from main import positions, add_realized_pnl
         from kis_data import get_current_price

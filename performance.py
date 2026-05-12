@@ -2,6 +2,7 @@
 import csv
 import os
 from datetime import datetime
+from config.settings import TOTAL_BUDGET
 
 TRADE_LOG = 'trades.csv'
 SIGNAL_LOG = 'signal_log.csv'
@@ -15,7 +16,6 @@ _HEADERS = [
     'entry_date', 'entry_price', 'exit_price',
     'qty', 'profit', 'profit_rate', 'reason', 'hold_days'
 ]
-TOTAL_BUDGET = 10_000_000
 
 
 def log_signal_scan(scan_records: list):
