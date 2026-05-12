@@ -107,7 +107,7 @@ def morning_routine():
 
     # 09:20 이후 주문 (장 초반 변동성 진정 후 진입)
     now_time = datetime.now()
-    target = now_time.replace(hour=9, minute=20, second=0, microsecond=0)
+    target = now_time.replace(hour=9, minute=10, second=0, microsecond=0)
     wait_seconds = max(0, (target - now_time).seconds)
     if wait_seconds > 0:
         time.sleep(wait_seconds)
