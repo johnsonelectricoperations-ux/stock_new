@@ -188,3 +188,4 @@ AWS 콘솔 → EC2 → 인스턴스 → 체크박스 선택 → 인스턴스 상
 | 토큰 오류 | KIS 토큰 만료 | `config/token_cache.json` 삭제 후 재시작 |
 | 텔레그램 에러 알림 수신 | 심각 에러 발생 | `/errors` 로 내용 확인 후 조치 |
 | 스케줄러 30분 무응답 알림 | 스레드 hang 또는 과부하 | `sudo systemctl restart stock-bot` |
+| 09:10~09:30 매수 없이 종료 | 1분봉 API 오류 또는 조건 미충족 | error.log 확인. 조건 미충족 시 09:30 강제 매수 동작 |
