@@ -24,11 +24,16 @@ def _analyze_stock(code: str) -> dict | None:
     prev_volume = df['volume'].iloc[-2]
     volume_ok = avg_volume > 0 and prev_volume >= avg_volume
 
+    volume_ratio = round(prev_volume / avg_volume, 2) if avg_volume > 0 else 0
     detail = f'현재가 {price:,} | MA20 {int(ma20):,} | MA60 {int(ma60):,} | 거래량 {"✅" if volume_ok else "❌"}'
     return {
         'momentum': round(momentum, 2),
         'is_uptrend': is_uptrend,
         'volume_ok': volume_ok,
+        'volume_ratio': volume_ratio,
+        'ma20': round(ma20, 0),
+        'ma60': round(ma60, 0),
+        'signal_price': int(price),
         'detail': detail,
     }
 
@@ -99,6 +104,11 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
                         'code': code,
                         'name': name,
                         'momentum': result['momentum'],
+                        'ma20': result['ma20'],
+                        'ma60': result['ma60'],
+                        'volume_ratio': result['volume_ratio'],
+                        'signal_price': result['signal_price'],
+                        'foreign_net_buy_mil': frgn_total,
                         'detail': result['detail'],
                     })
 
@@ -109,8 +119,12 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
                 'sector_avg_momentum': avg_score,
                 'code': code,
                 'name': name,
+                'signal_price': result['signal_price'],
                 'momentum': result['momentum'],
                 'is_uptrend': result['is_uptrend'],
+                'ma20': result['ma20'],
+                'ma60': result['ma60'],
+                'volume_ratio': result['volume_ratio'],
                 'foreign_5d_net_buy_mil': frgn_total,
                 'passed_all_filters': passed,
                 'selected': False,  # 아래에서 갱신

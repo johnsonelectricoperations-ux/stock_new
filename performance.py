@@ -1,21 +1,36 @@
 # 거래 이력 기록 및 전략 성과 평가 모듈
 import csv
+import json
 import os
 from datetime import datetime
 from config.settings import TOTAL_BUDGET
 
 TRADE_LOG = 'trades.csv'
 SIGNAL_LOG = 'signal_log.csv'
+FOLLOWUP_LOG = 'followup_log.csv'
+FOLLOWUP_PENDING = 'config/followup_pending.json'
+
+_HEADERS = [
+    'exit_date', 'exit_time', 'code', 'name', 'sector',
+    'entry_date', 'entry_time', 'entry_price', 'exit_price',
+    'qty', 'profit', 'profit_rate', 'reason', 'hold_days',
+    'peak_price', 'min_price', 'trigger_price',
+    'momentum', 'foreign_net_buy_mil',
+    'ma20_at_entry', 'ma60_at_entry', 'volume_ratio',
+    'kospi_trend', 'dip_entry_used',
+]
 _SIGNAL_HEADERS = [
     'date', 'sector', 'sector_rank', 'sector_avg_momentum',
-    'code', 'name', 'momentum', 'is_uptrend',
-    'foreign_5d_net_buy_mil', 'passed_all_filters', 'selected'
+    'code', 'name', 'signal_price', 'momentum', 'is_uptrend',
+    'ma20', 'ma60', 'volume_ratio',
+    'foreign_5d_net_buy_mil', 'passed_all_filters', 'selected',
 ]
-_HEADERS = [
-    'exit_date', 'code', 'name', 'sector',
-    'entry_date', 'entry_price', 'exit_price',
-    'qty', 'profit', 'profit_rate', 'reason', 'hold_days'
+_FOLLOWUP_HEADERS = [
+    'code', 'name', 'exit_date', 'exit_price', 'reason',
+    'd3_price', 'd3_rate', 'd5_price', 'd5_rate',
+    'd10_price', 'd10_rate', 'd20_price', 'd20_rate',
 ]
+_FOLLOWUP_DAYS = [3, 5, 10, 20]
 
 
 def log_signal_scan(scan_records: list):
@@ -28,15 +43,23 @@ def log_signal_scan(scan_records: list):
         for r in scan_records:
             writer.writerow([
                 r['date'], r['sector'], r['sector_rank'], r['sector_avg_momentum'],
-                r['code'], r['name'], r['momentum'], r['is_uptrend'],
+                r['code'], r['name'],
+                r.get('signal_price', ''), r['momentum'], r['is_uptrend'],
+                r.get('ma20', ''), r.get('ma60', ''), r.get('volume_ratio', ''),
                 r.get('foreign_5d_net_buy_mil', ''),
                 r['passed_all_filters'], r['selected'],
             ])
 
 
-def log_trade(code, name, sector, entry_date, entry_price, exit_price, qty, reason):
+def log_trade(code, name, sector, entry_date, entry_time, entry_price,
+              exit_price, qty, reason,
+              peak_price=None, min_price=None, trigger_price=None,
+              momentum=None, foreign_net_buy_mil=None,
+              ma20_at_entry=None, ma60_at_entry=None, volume_ratio=None,
+              kospi_trend=None, dip_entry_used=None):
     exists = os.path.exists(TRADE_LOG)
     exit_date = datetime.now().strftime('%Y-%m-%d')
+    exit_time = datetime.now().strftime('%H:%M:%S')
     hold_days = (
         datetime.strptime(exit_date, '%Y-%m-%d') -
         datetime.strptime(entry_date, '%Y-%m-%d')
@@ -49,11 +72,101 @@ def log_trade(code, name, sector, entry_date, entry_price, exit_price, qty, reas
         if not exists:
             writer.writerow(_HEADERS)
         writer.writerow([
-            exit_date, code, name, sector,
-            entry_date, entry_price, exit_price,
-            qty, profit, profit_rate, reason, hold_days
+            exit_date, exit_time, code, name, sector,
+            entry_date, entry_time, entry_price, exit_price,
+            qty, profit, profit_rate, reason, hold_days,
+            peak_price, min_price, trigger_price,
+            momentum, foreign_net_buy_mil,
+            ma20_at_entry, ma60_at_entry, volume_ratio,
+            kospi_trend, dip_entry_used,
         ])
 
+
+# ─── 사후 추적 (followup) ───────────────────────────────────────────────────
+
+def _load_followup_pending() -> list:
+    if not os.path.exists(FOLLOWUP_PENDING):
+        return []
+    with open(FOLLOWUP_PENDING, 'r', encoding='utf-8') as f:
+        return json.load(f)
+
+
+def _save_followup_pending(pending: list):
+    os.makedirs(os.path.dirname(FOLLOWUP_PENDING), exist_ok=True)
+    with open(FOLLOWUP_PENDING, 'w', encoding='utf-8') as f:
+        json.dump(pending, f, ensure_ascii=False)
+
+
+def add_followup_pending(code: str, name: str, exit_date: str, exit_price: int, reason: str):
+    """매도 시 사후 추적 대상에 추가."""
+    pending = _load_followup_pending()
+    for p in pending:
+        if p['code'] == code and p['exit_date'] == exit_date:
+            return
+    pending.append({
+        'code': code, 'name': name,
+        'exit_date': exit_date, 'exit_price': exit_price, 'reason': reason,
+        'd3': None, 'd5': None, 'd10': None, 'd20': None,
+    })
+    _save_followup_pending(pending)
+
+
+def get_followup_due(today_str: str) -> list:
+    """오늘 날짜 기준으로 가격 추적이 필요한 (item, day_key) 목록 반환."""
+    pending = _load_followup_pending()
+    today = datetime.strptime(today_str, '%Y-%m-%d')
+    due = []
+    for item in pending:
+        exit_dt = datetime.strptime(item['exit_date'], '%Y-%m-%d')
+        days_elapsed = (today - exit_dt).days
+        for d in _FOLLOWUP_DAYS:
+            key = f'd{d}'
+            if days_elapsed >= d and item.get(key) is None:
+                due.append((item, key))
+    return due
+
+
+def record_followup_price(code: str, exit_date: str, day_key: str, price: int):
+    """사후 추적 가격 기록. 모든 시점 완료 시 followup_log.csv에 기록."""
+    pending = _load_followup_pending()
+    target = None
+    for item in pending:
+        if item['code'] == code and item['exit_date'] == exit_date:
+            item[day_key] = price
+            target = item
+            break
+    if target is None:
+        return
+    _save_followup_pending(pending)
+
+    if all(target.get(f'd{d}') is not None for d in _FOLLOWUP_DAYS):
+        _write_followup_log(target)
+        pending = [p for p in pending
+                   if not (p['code'] == code and p['exit_date'] == exit_date)]
+        _save_followup_pending(pending)
+
+
+def _write_followup_log(item: dict):
+    ep = item['exit_price']
+    exists = os.path.exists(FOLLOWUP_LOG)
+    with open(FOLLOWUP_LOG, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(_FOLLOWUP_HEADERS)
+
+        def rate(p):
+            return round((p - ep) / ep * 100, 2) if p else ''
+
+        writer.writerow([
+            item['code'], item['name'], item['exit_date'], ep, item['reason'],
+            item['d3'],  rate(item['d3']),
+            item['d5'],  rate(item['d5']),
+            item['d10'], rate(item['d10']),
+            item['d20'], rate(item['d20']),
+        ])
+
+
+# ─── 성과 리포트 ────────────────────────────────────────────────────────────
 
 def get_report() -> str:
     if not os.path.exists(TRADE_LOG):

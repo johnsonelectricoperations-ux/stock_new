@@ -16,7 +16,7 @@ from config.settings import (
     PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
     EMERGENCY_STOP_RATE, MOMENTUM_EXIT_RATE,
 )
-from performance import log_trade
+from performance import log_trade, add_followup_pending
 from error_monitor import setup_logging, log_error, log_info, log_warning
 
 # 보유 종목 저장소: {code: {name, sector, qty, entry_price, entry_date, peak_price}}
@@ -97,8 +97,10 @@ def morning_routine():
     log_info('morning_routine', f'장 시작 루틴 실행 {now}')
 
     # 코스피 MA60 필터 — 하락장이면 매수 중단
+    kospi_trend = True
     try:
-        if not check_market_trend():
+        kospi_trend = check_market_trend()
+        if not kospi_trend:
             send_message('⚠️ KOSPI 하락장 감지 (MA60 하향). 오늘 매수를 보류합니다.')
             log_warning('morning_routine', 'KOSPI 하락장 감지 — 매수 보류')
             return
@@ -156,7 +158,10 @@ def morning_routine():
             code = s['code']
             try:
                 if _check_dip_entry(code):
-                    msg_lines.append(_execute_buy(s, available_cash, total_signals))
+                    msg_lines.append(_execute_buy(
+                        s, available_cash, total_signals,
+                        kospi_trend=kospi_trend, dip_entry_used=True,
+                    ))
                 else:
                     still_pending.append(s)
                     log_info('morning_routine', f"{s['name']} 눌림목 조건 미충족 — 다음 분 재확인")
@@ -172,7 +177,10 @@ def morning_routine():
                 log_info('morning_routine', f'09:30 초과 — {len(pending)}종목 강제 매수')
                 for s in pending:
                     try:
-                        msg_lines.append(_execute_buy(s, available_cash, total_signals))
+                        msg_lines.append(_execute_buy(
+                            s, available_cash, total_signals,
+                            kospi_trend=kospi_trend, dip_entry_used=False,
+                        ))
                         time.sleep(0.3)
                     except Exception as e:
                         log_error(f'morning_routine:force_buy:{s["code"]}', e, critical=True)
@@ -215,22 +223,33 @@ def _get_candle_sell_info(code: str) -> dict | None:
         return None
 
 
-def _execute_buy(s: dict, available_cash: int, total_signals: int) -> str:
+def _execute_buy(s: dict, available_cash: int, total_signals: int,
+                 kospi_trend: bool = True, dip_entry_used: bool = True) -> str:
     """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환."""
     code = s['code']
     info = get_current_price(code)
     qty = calc_quantity(info['price'], total_signals, effective_budget=available_cash)
     buy_stock(code, qty)
+    now = datetime.now()
     positions[code] = {
         'name': s['name'],
         'sector': s['sector'],
         'qty': qty,
         'entry_price': info['price'],
-        'entry_date': datetime.now().strftime('%Y-%m-%d'),
+        'entry_date': now.strftime('%Y-%m-%d'),
+        'entry_time': now.strftime('%H:%M:%S'),
         'peak_price': info['price'],
+        'min_price': info['price'],
         'break_even_set': False,
         'floor_price': 0,
         'partial_sold': False,
+        'momentum': s.get('momentum'),
+        'foreign_net_buy_mil': s.get('foreign_net_buy_mil'),
+        'ma20_at_entry': s.get('ma20'),
+        'ma60_at_entry': s.get('ma60'),
+        'volume_ratio': s.get('volume_ratio'),
+        'kospi_trend': kospi_trend,
+        'dip_entry_used': dip_entry_used,
     }
     log_info('morning_routine', f"매수 체결: {s['name']}({code}) {info['price']:,}원 × {qty}주")
     return (
@@ -249,7 +268,7 @@ def _trading_days_held(entry_date_str: str) -> int:
         return 0
 
 
-def _do_sell(code: str, qty: int, price: int, reason: str):
+def _do_sell(code: str, qty: int, price: int, reason: str, trigger_price: int = None):
     """매도 실행 + PnL/로그/텔레그램 처리."""
     pos = positions[code]
     entry = pos['entry_price']
@@ -257,13 +276,27 @@ def _do_sell(code: str, qty: int, price: int, reason: str):
     profit_rate = (price - entry) / entry * 100
     sell_stock(code, qty)
     add_realized_pnl(profit)
+    now = datetime.now()
+    exit_date = now.strftime('%Y-%m-%d')
     log_trade(
         code=code, name=pos['name'],
         sector=pos.get('sector', ''),
-        entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
+        entry_date=pos.get('entry_date', exit_date),
+        entry_time=pos.get('entry_time', ''),
         entry_price=entry, exit_price=price,
         qty=qty, reason=reason,
+        peak_price=pos.get('peak_price'),
+        min_price=pos.get('min_price'),
+        trigger_price=trigger_price,
+        momentum=pos.get('momentum'),
+        foreign_net_buy_mil=pos.get('foreign_net_buy_mil'),
+        ma20_at_entry=pos.get('ma20_at_entry'),
+        ma60_at_entry=pos.get('ma60_at_entry'),
+        volume_ratio=pos.get('volume_ratio'),
+        kospi_trend=pos.get('kospi_trend'),
+        dip_entry_used=pos.get('dip_entry_used'),
     )
+    add_followup_pending(code, pos['name'], exit_date, price, reason)
     log_info('sell', f"{pos['name']}({code}) {reason} {price:,}원 수익률 {profit_rate:+.2f}%")
     send_message(
         f'[매도 체결] {pos["name"]} {price:,}원\n'
@@ -288,14 +321,17 @@ def monitor_positions():
             entry = pos['entry_price']
             rate  = (price - entry) / entry
 
-            # 고점 갱신
+            # 고점/저점 갱신
             if price > pos['peak_price']:
                 positions[code]['peak_price'] = price
+            if price < pos.get('min_price', price):
+                positions[code]['min_price'] = price
             peak = positions[code]['peak_price']
 
             # ── 긴급 손절: -15% 이상 → 캔들 확인 없이 즉시 매도
             if rate <= -EMERGENCY_STOP_RATE:
-                _do_sell(code, pos['qty'], price, f'긴급손절({rate*100:+.1f}%)')
+                _do_sell(code, pos['qty'], price, f'긴급손절({rate*100:+.1f}%)',
+                         trigger_price=int(entry * (1 - EMERGENCY_STOP_RATE)))
                 del positions[code]
                 time.sleep(0.3)
                 continue
@@ -346,13 +382,17 @@ def monitor_positions():
             if candle_confirmed or time_stop:
                 if time_stop and not candle_confirmed:
                     reason = f'시간손절({days_held}거래일, {rate*100:+.1f}%)'
+                    trig = None
                 elif prev_close <= stop_loss_price:
                     reason = '손절(캔들확인)'
+                    trig = int(stop_loss_price)
                 elif floor_price and prev_close <= floor_price:
                     reason = '본전보호(캔들확인)'
+                    trig = int(floor_price)
                 else:
                     reason = '트레일링스탑(캔들확인)'
-                _do_sell(code, pos['qty'], price, reason)
+                    trig = int(trail_stop_price)
+                _do_sell(code, pos['qty'], price, reason, trigger_price=trig)
                 del positions[code]
 
             time.sleep(0.3)
@@ -360,6 +400,25 @@ def monitor_positions():
             log_error(f'monitor_positions:{code}', e)
 
     _last_heartbeat = time.time()
+
+
+def followup_checker():
+    """매도 이후 사후 추적 가격 기록 — 매일 15:35 실행."""
+    if not is_trading_day():
+        return
+    from performance import get_followup_due, record_followup_price
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    due = get_followup_due(today_str)
+    if not due:
+        return
+    for item, day_key in due:
+        try:
+            info = get_current_price(item['code'])
+            record_followup_price(item['code'], item['exit_date'], day_key, info['price'])
+            log_info('followup_checker',
+                     f"{item['name']} {day_key} 추적 완료: {info['price']:,}원")
+        except Exception as e:
+            log_error(f"followup_checker:{item['code']}", e)
 
 
 def daily_report():
@@ -435,6 +494,7 @@ def run_scheduler():
     _last_heartbeat = time.time()
     schedule.every().day.at('08:00').do(morning_routine)
     schedule.every(2).minutes.do(monitor_positions)
+    schedule.every().day.at('15:35').do(followup_checker)
     schedule.every().day.at('15:35').do(daily_report)
     while True:
         try:
