@@ -150,3 +150,58 @@
 - [ ] 외국인 순매수 임계값 최적화 (현재 0원, 백테스트 후 결정)
 - [ ] 외국인 프로그램 매매 vs 전체 외국인 매매 구분 (현재 전체 외국인 매매 사용)
 - [ ] 실전 투자 전환 시점
+
+---
+
+## Phase 7. 실전 투자 전환 체크리스트 (미완료)
+
+> 모의투자 검증 완료 후 아래 순서대로 진행.
+
+### 사전 조건 확인
+- [ ] 모의투자 승률 45% 이상, 손익비 1.5 이상 달성
+- [ ] 30건 이상 거래로 통계 신뢰도 확보
+- [ ] 에러 없이 2주 이상 안정적으로 동작 확인
+- [ ] 실전 투자 금액 확정
+
+### 코드 수정 사항
+
+#### 1. .env 파일 수정 (필수)
+```
+KIS_IS_MOCK=false
+KIS_APP_KEY=실전앱키
+KIS_APP_SECRET=실전앱시크릿
+KIS_ACCOUNT_NO=실전계좌번호
+TOTAL_BUDGET=실제투자금액
+```
+- KIS Developers에서 실전 앱키 별도 발급 필요
+- 모의투자 앱키와 실전 앱키는 다름
+
+#### 2. kis_balance.py 활성화 (중요)
+- [ ] `main.py`의 `get_available_cash()`를 settings 고정값 대신 실제 잔고 조회로 교체
+- [ ] `morning_routine()` 매수 전 실제 예수금 확인 로직 추가
+- [ ] `daily_report()`에 실제 잔고 기반 현황 반영
+
+```python
+# 실전 전환 후 get_available_cash() 교체 예시
+from kis_balance import get_balance
+def get_available_cash():
+    return get_balance()['cash']
+```
+
+#### 3. 설정값 재검토
+- [ ] `TOTAL_BUDGET`: 실제 투자금으로 변경
+- [ ] `MAX_STOCK_COUNT`: 투자금 규모에 맞게 조정 (종목당 최소 100만원 이상)
+- [ ] `STOP_LOSS_RATE`, `TRAIL_STOP_RATE`: 모의투자 결과 기반 튜닝
+- [ ] `FOREIGN_BUY_THRESHOLD`: 모의투자 결과 기반 튜닝
+
+#### 4. 수수료/세금 반영
+- [ ] 매도 시 수익 계산에 증권거래세 0.18% + 수수료 반영
+- [ ] `log_trade()` 및 `_do_sell()`의 profit 계산 수정
+
+### 전환 당일 절차
+1. `sudo systemctl stop stock-bot`
+2. `.env` 파일 수정 (실전 키로 교체)
+3. `config/token_cache.json` 삭제 (실전 토큰 새로 발급)
+4. `sudo systemctl start stock-bot`
+5. 텔레그램 `/balance`로 실제 잔고 조회 확인
+6. 소액 테스트 주문 후 정상 체결 확인
