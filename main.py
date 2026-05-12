@@ -345,7 +345,7 @@ def run_scheduler():
     global _last_heartbeat
     _last_heartbeat = time.time()
     schedule.every().day.at('08:00').do(morning_routine)
-    schedule.every(5).minutes.do(monitor_positions)
+    schedule.every(2).minutes.do(monitor_positions)
     schedule.every().day.at('15:35').do(daily_report)
     while True:
         try:
