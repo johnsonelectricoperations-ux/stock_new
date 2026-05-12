@@ -1,10 +1,32 @@
 # KIS API로 종목 현재가 및 일봉 데이터를 조회하는 모듈
+import time
 import requests
 import urllib3
 from config.settings import KIS_BASE_URL, KIS_IS_MOCK
 from kis_auth import get_headers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+_RETRY_COUNT = 3
+_RETRY_DELAY = 2  # 초
+
+
+def _get_with_retry(url, headers, params, verify):
+    """500/503 서버 오류 시 최대 3회 재시도."""
+    last_exc = None
+    for attempt in range(_RETRY_COUNT):
+        try:
+            res = requests.get(url, headers=headers, params=params, verify=verify, timeout=10)
+            res.raise_for_status()
+            return res
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code in (500, 503):
+                last_exc = e
+                time.sleep(_RETRY_DELAY * (attempt + 1))
+                continue
+            raise
+    raise last_exc
+
 
 def get_current_price(stock_code):
     url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/quotations/inquire-price'
@@ -14,8 +36,7 @@ def get_current_price(stock_code):
         'fid_input_iscd': stock_code
     }
     verify = not KIS_IS_MOCK
-    res = requests.get(url, headers=headers, params=params, verify=verify)
-    res.raise_for_status()
+    res = _get_with_retry(url, headers, params, verify)
     data = res.json()
 
     if data['rt_cd'] != '0':

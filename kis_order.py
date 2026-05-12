@@ -1,4 +1,5 @@
 # KIS API 매수/매도 주문 실행 및 포지션 사이징 모듈
+import time
 import requests
 import urllib3
 import json
@@ -14,13 +15,28 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 BUY_TR_ID  = 'VTTC0802U' if KIS_IS_MOCK else 'TTTC0802U'
 SELL_TR_ID = 'VTTC0801U' if KIS_IS_MOCK else 'TTTC0801U'
 
+_RETRY_COUNT = 3
+_RETRY_DELAY = 2  # 초
+
+
 def _post_order(tr_id, body):
+    """500/503 서버 오류 시 최대 3회 재시도."""
     url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/trading/order-cash'
-    headers = get_headers(tr_id)
     verify = not KIS_IS_MOCK
-    res = requests.post(url, headers=headers, data=json.dumps(body), verify=verify)
-    res.raise_for_status()
-    return res.json()
+    last_exc = None
+    for attempt in range(_RETRY_COUNT):
+        try:
+            headers = get_headers(tr_id)
+            res = requests.post(url, headers=headers, data=json.dumps(body), verify=verify, timeout=10)
+            res.raise_for_status()
+            return res.json()
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code in (500, 503):
+                last_exc = e
+                time.sleep(_RETRY_DELAY * (attempt + 1))
+                continue
+            raise
+    raise last_exc
 
 def buy_stock(stock_code, quantity):
     body = {

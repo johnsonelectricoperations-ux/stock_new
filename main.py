@@ -329,12 +329,12 @@ def daily_report():
 
 
 def _heartbeat_watchdog():
-    """스케줄러 스레드가 멈췄는지 30분 주기로 감시."""
-    WATCHDOG_TIMEOUT = 1800  # 30분 동안 heartbeat 없으면 알림
+    """스케줄러 스레드가 멈췄는지 30분 주기로 감시 (장 중에만 동작)."""
+    WATCHDOG_TIMEOUT = 1800  # 30분
     while True:
         time.sleep(WATCHDOG_TIMEOUT)
         if not is_market_open():
-            continue
+            continue  # 장 외 시간에는 검사하지 않음
         elapsed = time.time() - _last_heartbeat
         if elapsed > WATCHDOG_TIMEOUT:
             log_error('heartbeat_watchdog', critical=True,
@@ -350,6 +350,7 @@ def run_scheduler():
     while True:
         try:
             schedule.run_pending()
+            _last_heartbeat = time.time()  # 스케줄러 정상 동작 확인
         except Exception as e:
             log_error('run_scheduler', e, critical=True)
         time.sleep(30)
