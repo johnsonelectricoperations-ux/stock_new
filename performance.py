@@ -8,10 +8,12 @@ from config.settings import TOTAL_BUDGET
 TRADE_LOG = 'trades.csv'
 SIGNAL_LOG = 'signal_log.csv'
 BASIS_LOG = 'basis_log.csv'
+TIMING_LOG = 'timing_log.csv'
 FOLLOWUP_LOG = 'followup_log.csv'
 FOLLOWUP_PENDING = 'config/followup_pending.json'
 
 _BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct']
+_TIMING_HEADERS = ['date', 'code', 'name', 'check_time', 'dip_met', 'action']
 
 _HEADERS = [
     'exit_date', 'exit_time', 'code', 'name', 'sector',
@@ -47,6 +49,23 @@ def log_basis(data: dict):
         writer.writerow([
             now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
             data['spot'], data['futures'], data['basis'], data['basis_pct'],
+        ])
+
+
+def log_timing(code: str, name: str, dip_met: bool, action: str):
+    """
+    매수 윈도우(09:15~09:30) 매 분 체크 기록.
+    action: waiting | bought_dip | buy_failed | forced_bought
+    """
+    exists = os.path.exists(TIMING_LOG)
+    with open(TIMING_LOG, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(_TIMING_HEADERS)
+        now = datetime.now()
+        writer.writerow([
+            now.strftime('%Y-%m-%d'), code, name,
+            now.strftime('%H:%M:%S'), dip_met, action,
         ])
 
 

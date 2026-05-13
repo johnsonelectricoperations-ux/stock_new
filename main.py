@@ -16,7 +16,7 @@ from config.settings import (
     PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
     EMERGENCY_STOP_RATE, MOMENTUM_EXIT_RATE,
 )
-from performance import log_trade, add_followup_pending, log_basis
+from performance import log_trade, add_followup_pending, log_basis, log_timing
 from basis_collector import get_basis
 from error_monitor import setup_logging, log_error, log_info, log_warning
 
@@ -174,17 +174,21 @@ def morning_routine():
         for s in list(pending):
             code = s['code']
             try:
-                if _check_dip_entry(code):
+                dip_met = _check_dip_entry(code)
+                if dip_met:
                     msg_lines.append(_execute_buy(
                         s, available_cash, total_signals,
                         kospi_trend=kospi_trend, dip_entry_used=True,
                     ))
+                    log_timing(code, s['name'], True, 'bought_dip')
                 else:
                     still_pending.append(s)
+                    log_timing(code, s['name'], False, 'waiting')
                     log_info('morning_routine', f"{s['name']} 눌림목 조건 미충족 — 다음 분 재확인")
                 time.sleep(0.3)
             except Exception as e:
                 log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
+                log_timing(code, s['name'], True, 'buy_failed')
                 s['_attempts'] = s.get('_attempts', 0) + 1
                 if s['_attempts'] < 3:
                     still_pending.append(s)  # 1분 뒤 재시도
@@ -204,6 +208,7 @@ def morning_routine():
                                 s, available_cash, total_signals,
                                 kospi_trend=kospi_trend, dip_entry_used=False,
                             ))
+                            log_timing(s['code'], s['name'], False, 'forced_bought')
                             break
                         except Exception as e:
                             if attempt < 2:
@@ -212,6 +217,7 @@ def morning_routine():
                                 time.sleep(5)
                             else:
                                 log_error(f'morning_routine:force_buy:{s["code"]}', e, critical=True)
+                                log_timing(s['code'], s['name'], False, 'forced_failed')
                                 msg_lines.append(f"⚠️ {s['name']} 강제 매수 최종 실패: {e}")
                     time.sleep(0.3)
                 break
