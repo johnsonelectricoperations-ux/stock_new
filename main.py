@@ -87,6 +87,7 @@ def is_market_open():
     return market_open <= now <= market_close
 
 def morning_routine():
+    global _last_heartbeat
     if not is_trading_day():
         return
     if is_paused():
@@ -114,6 +115,7 @@ def morning_routine():
     wait_seconds = max(0, (target - now_time).total_seconds())
     if wait_seconds > 0:
         time.sleep(wait_seconds)
+    _last_heartbeat = time.time()  # 워치독 오경보 방지
 
     # 신규 매수 가능 슬롯 및 가용 현금 계산
     new_slots = MAX_STOCK_COUNT - len(positions)
@@ -153,6 +155,7 @@ def morning_routine():
     pending = list(signals)  # 아직 매수 안 된 종목
 
     while pending:
+        _last_heartbeat = time.time()  # 워치독 오경보 방지
         still_pending = []
         for s in list(pending):
             code = s['code']
@@ -168,23 +171,35 @@ def morning_routine():
                 time.sleep(0.3)
             except Exception as e:
                 log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
-                msg_lines.append(f"⚠️ {s['name']} 매수 실패: {e}")
+                s['_attempts'] = s.get('_attempts', 0) + 1
+                if s['_attempts'] < 3:
+                    still_pending.append(s)  # 1분 뒤 재시도
+                    log_info('morning_routine', f"{s['name']} 매수 실패 ({s['_attempts']}회) — 재시도 예정")
+                else:
+                    msg_lines.append(f"⚠️ {s['name']} 매수 3회 실패, 포기: {e}")
 
         pending = still_pending
         if pending:
             if datetime.now() >= deadline:
-                # 09:30 초과 — 남은 종목 강제 시장가 매수
+                # 09:30 초과 — 남은 종목 강제 시장가 매수 (최대 3회 시도)
                 log_info('morning_routine', f'09:30 초과 — {len(pending)}종목 강제 매수')
                 for s in pending:
-                    try:
-                        msg_lines.append(_execute_buy(
-                            s, available_cash, total_signals,
-                            kospi_trend=kospi_trend, dip_entry_used=False,
-                        ))
-                        time.sleep(0.3)
-                    except Exception as e:
-                        log_error(f'morning_routine:force_buy:{s["code"]}', e, critical=True)
-                        msg_lines.append(f"⚠️ {s['name']} 강제 매수 실패: {e}")
+                    for attempt in range(3):
+                        try:
+                            msg_lines.append(_execute_buy(
+                                s, available_cash, total_signals,
+                                kospi_trend=kospi_trend, dip_entry_used=False,
+                            ))
+                            break
+                        except Exception as e:
+                            if attempt < 2:
+                                log_info('morning_routine',
+                                         f"{s['name']} 강제매수 실패({attempt+1}회) — {5}초 후 재시도")
+                                time.sleep(5)
+                            else:
+                                log_error(f'morning_routine:force_buy:{s["code"]}', e, critical=True)
+                                msg_lines.append(f"⚠️ {s['name']} 강제 매수 최종 실패: {e}")
+                    time.sleep(0.3)
                 break
             time.sleep(60)  # 1분 대기 후 재확인
 

@@ -15,8 +15,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 BUY_TR_ID  = 'VTTC0802U' if KIS_IS_MOCK else 'TTTC0802U'
 SELL_TR_ID = 'VTTC0801U' if KIS_IS_MOCK else 'TTTC0801U'
 
-_RETRY_COUNT = 3
-_RETRY_DELAY = 2  # 초
+_RETRY_COUNT = 5
+_RETRY_DELAY = 3  # 초
 
 
 def _post_order(tr_id, body):
