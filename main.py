@@ -4,7 +4,7 @@ import os
 import time
 import schedule
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from kis_data import get_current_price, get_minute_candles
 from kis_sector import get_leading_sector_signals
 from kis_indicator import check_market_trend
@@ -78,6 +78,25 @@ def is_trading_day():
         return False
     return True
 
+
+def _second_thursday(year: int, month: int) -> datetime:
+    """해당 월의 두 번째 목요일 날짜 반환."""
+    first = datetime(year, month, 1)
+    days_to_thu = (3 - first.weekday()) % 7  # 목요일 = weekday 3
+    return first + timedelta(days=days_to_thu + 7)
+
+
+def is_expiry_period() -> bool:
+    """선물/옵션 만기일 당일, 또는 네 마녀의 날(3·6·9·12월) 전날이면 True."""
+    today = datetime.now().date()
+    thu = _second_thursday(today.year, today.month).date()
+    if today == thu:
+        return True
+    # 네 마녀의 날은 전날(수요일)도 변동성이 커서 매수 자제
+    if today.month in (3, 6, 9, 12) and today == thu - timedelta(days=1):
+        return True
+    return False
+
 def is_market_open():
     if not is_trading_day():
         return False
@@ -96,6 +115,20 @@ def morning_routine():
     now = datetime.now().strftime('%Y-%m-%d %H:%M')
     send_message(f'[장 시작] {now}\n테마 수집 및 신호 분석 시작합니다...')
     log_info('morning_routine', f'장 시작 루틴 실행 {now}')
+
+    # 선물/옵션 만기일 필터
+    if is_expiry_period():
+        today = datetime.now()
+        thu = _second_thursday(today.year, today.month).date()
+        if today.month in (3, 6, 9, 12) and today.date() < thu:
+            label = '네 마녀의 날 전날 (변동성 주의)'
+        elif today.month in (3, 6, 9, 12):
+            label = '네 마녀의 날 (쿼드러플 위칭)'
+        else:
+            label = '선물/옵션 월간 만기일'
+        send_message(f'⚠️ {label}. 오늘 매수를 보류합니다.')
+        log_warning('morning_routine', f'{label} — 매수 보류')
+        return
 
     # 코스피 MA60 필터 — 하락장이면 매수 중단
     kospi_trend = True
