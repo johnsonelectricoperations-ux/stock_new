@@ -16,7 +16,8 @@ from config.settings import (
     PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
     EMERGENCY_STOP_RATE, MOMENTUM_EXIT_RATE,
 )
-from performance import log_trade, add_followup_pending
+from performance import log_trade, add_followup_pending, log_basis
+from basis_collector import get_basis
 from error_monitor import setup_logging, log_error, log_info, log_warning
 
 # 보유 종목 저장소: {code: {name, sector, qty, entry_price, entry_date, peak_price}}
@@ -116,6 +117,19 @@ def morning_routine():
     if wait_seconds > 0:
         time.sleep(wait_seconds)
     _last_heartbeat = time.time()  # 워치독 오경보 방지
+
+    # 베이시스 수집 (임계값 튜닝용 데이터 축적, 매매 조건으로는 미사용)
+    try:
+        basis_data = get_basis()
+        if basis_data:
+            log_basis(basis_data)
+            log_info('morning_routine',
+                     f"베이시스 {basis_data['basis']:+.2f}pt "
+                     f"(선물 {basis_data['futures']:,.2f} / 현물 {basis_data['spot']:,.0f})")
+        else:
+            log_warning('morning_routine', '베이시스 수집 실패 — 네이버 응답 없음')
+    except Exception as e:
+        log_error('morning_routine:basis_collector', e)
 
     # 신규 매수 가능 슬롯 및 가용 현금 계산
     new_slots = MAX_STOCK_COUNT - len(positions)

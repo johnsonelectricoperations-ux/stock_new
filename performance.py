@@ -7,8 +7,11 @@ from config.settings import TOTAL_BUDGET
 
 TRADE_LOG = 'trades.csv'
 SIGNAL_LOG = 'signal_log.csv'
+BASIS_LOG = 'basis_log.csv'
 FOLLOWUP_LOG = 'followup_log.csv'
 FOLLOWUP_PENDING = 'config/followup_pending.json'
+
+_BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct']
 
 _HEADERS = [
     'exit_date', 'exit_time', 'code', 'name', 'sector',
@@ -31,6 +34,20 @@ _FOLLOWUP_HEADERS = [
     'd10_price', 'd10_rate', 'd20_price', 'd20_rate',
 ]
 _FOLLOWUP_DAYS = [3, 5, 10, 20]
+
+
+def log_basis(data: dict):
+    """매일 장 시작 전 KOSPI 200 베이시스 기록 (임계값 튜닝용)."""
+    exists = os.path.exists(BASIS_LOG)
+    with open(BASIS_LOG, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(_BASIS_HEADERS)
+        now = datetime.now()
+        writer.writerow([
+            now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
+            data['spot'], data['futures'], data['basis'], data['basis_pct'],
+        ])
 
 
 def log_signal_scan(scan_records: list):
