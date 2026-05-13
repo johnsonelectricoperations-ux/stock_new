@@ -75,10 +75,12 @@
 - [x] KIS API 매도 주문 (`kis_order.py`)
 - [x] 포지션 사이징 계산 (effective_budget 파라미터)
 - [x] 중복 매수 방지
-- [x] 눌림목 진입: 09:10~09:30 1분마다 조건 체크 후 매수
+- [x] 눌림목 진입: 09:15~09:30 1분마다 조건 체크 후 매수
   - 조건: 현재가 > 직전 1분봉 고가 AND 현재가 > 5분 MA
   - 09:30까지 조건 미충족 시 강제 시장가 매수
-- [x] KIS 500 오류 자동 재시도 (최대 3회, 2초 간격)
+  - 매수 실패 시 종목 대기열 재등록 → 1분 후 재시도 (최대 3회)
+  - 강제매수도 5초 간격 3회 재시도
+- [x] KIS 500 오류 자동 재시도 (최대 5회, 3초 간격)
 
 ---
 
@@ -115,7 +117,12 @@
 ## Phase 5-3. 성과 평가 모듈
 
 - [x] 매도 시 거래 내역 자동 기록 (`trades.csv`)
+  - [x] 분석용 확장 필드: entry_time, exit_time, peak_price, min_price, trigger_price, momentum, foreign_net_buy_mil, ma20/ma60_at_entry, volume_ratio, kospi_trend, dip_entry_used
 - [x] 매일 신호 스캔 전 종목 기록 (`signal_log.csv`) — 임계값 튜닝용
+  - [x] 확장 필드: signal_price, ma20, ma60, volume_ratio
+- [x] 매도 후 사후 추적 기록 (`followup_log.csv`) — 3/5/10/20일 후 가격 자동 수집
+- [x] 매일 KOSPI 200 베이시스 기록 (`basis_log.csv`) — 실전 전환 전 임계값 결정용
+- [x] 매수 윈도우 분별 체크 기록 (`timing_log.csv`) — 진입 시간 최적화용
 - [x] 누적 성과 계산 (승률, 손익비, MDD, 연속 손실, 평균 보유 기간)
 - [x] 섹터별 평균 수익률 분석
 - [x] `/report` 명령어로 텔레그램에서 즉시 조회
