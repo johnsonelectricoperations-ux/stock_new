@@ -48,7 +48,10 @@ def log_basis(data: dict):
         now = datetime.now()
         writer.writerow([
             now.strftime('%Y-%m-%d'), now.strftime('%H:%M:%S'),
-            data['spot'], data['futures'], data['basis'], data['basis_pct'],
+            data['spot'],
+            data.get('futures') or '',
+            data.get('basis') or '',
+            data.get('basis_pct') or '',
         ])
 
 

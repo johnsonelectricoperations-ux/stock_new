@@ -123,11 +123,17 @@ def morning_routine():
         basis_data = get_basis()
         if basis_data:
             log_basis(basis_data)
-            log_info('morning_routine',
-                     f"베이시스 {basis_data['basis']:+.2f}pt "
-                     f"(선물 {basis_data['futures']:,.2f} / 현물 {basis_data['spot']:,.0f})")
+            if basis_data['basis'] is not None:
+                log_info('morning_routine',
+                         f"베이시스 {basis_data['basis']:+.2f}pt "
+                         f"(선물 {basis_data['futures']:,.2f} / 현물 {basis_data['spot']:,.0f}) "
+                         f"[{basis_data['futures_code']}]")
+            else:
+                log_warning('morning_routine',
+                            f"현물 {basis_data['spot']:,.0f} 기록 완료 "
+                            f"— 선물({basis_data['futures_code']}) 수집 실패")
         else:
-            log_warning('morning_routine', '베이시스 수집 실패 — 네이버 응답 없음')
+            log_warning('morning_routine', '베이시스 수집 실패 — KODEX 200 조회 불가')
     except Exception as e:
         log_error('morning_routine:basis_collector', e)
 
