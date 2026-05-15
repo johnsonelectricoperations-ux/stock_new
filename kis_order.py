@@ -20,21 +20,27 @@ _RETRY_DELAY = 3  # 초
 
 
 def _post_order(tr_id, body):
-    """500/503 서버 오류 시 최대 3회 재시도."""
+    """500/503 서버 오류 시 최대 _RETRY_COUNT회 재시도. 오류 시 응답 본문 포함 예외 발생."""
+    import logging
     url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/trading/order-cash'
     verify = not KIS_IS_MOCK
     last_exc = None
     for attempt in range(_RETRY_COUNT):
         try:
             headers = get_headers(tr_id)
+            headers['custtype'] = 'P'  # 개인 투자자
             res = requests.post(url, headers=headers, data=json.dumps(body), verify=verify, timeout=10)
+            if res.status_code in (500, 503):
+                body_text = res.text[:500]
+                logging.warning(f'KIS 주문 {res.status_code} (시도 {attempt+1}/{_RETRY_COUNT}): {body_text}')
+                last_exc = requests.exceptions.HTTPError(
+                    f'{res.status_code} Server Error — {body_text}', response=res
+                )
+                time.sleep(_RETRY_DELAY * (attempt + 1))
+                continue
             res.raise_for_status()
             return res.json()
         except requests.exceptions.HTTPError as e:
-            if e.response is not None and e.response.status_code in (500, 503):
-                last_exc = e
-                time.sleep(_RETRY_DELAY * (attempt + 1))
-                continue
             raise
     raise last_exc
 
