@@ -5,7 +5,7 @@ import urllib3
 import json
 from kis_auth import get_headers
 from config.settings import (
-    KIS_BASE_URL, KIS_IS_MOCK,
+    KIS_ORDER_BASE_URL, KIS_IS_MOCK,
     KIS_CANO, KIS_ACNT_PRDT_CD,
     TOTAL_BUDGET, MAX_STOCK_COUNT
 )
@@ -22,7 +22,7 @@ _RETRY_DELAY = 3  # 초
 def _post_order(tr_id, body):
     """500/503 서버 오류 시 최대 _RETRY_COUNT회 재시도. 오류 시 응답 본문 포함 예외 발생."""
     import logging
-    url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/trading/order-cash'
+    url = f'{KIS_ORDER_BASE_URL}/uapi/domestic-stock/v1/trading/order-cash'
     verify = not KIS_IS_MOCK
     last_exc = None
     for attempt in range(_RETRY_COUNT):

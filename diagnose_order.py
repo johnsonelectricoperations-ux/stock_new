@@ -2,14 +2,15 @@
 import json
 import requests
 import urllib3
-from config.settings import KIS_BASE_URL, KIS_IS_MOCK, KIS_CANO, KIS_ACNT_PRDT_CD, KIS_APP_KEY, KIS_APP_SECRET
+from config.settings import KIS_BASE_URL, KIS_ORDER_BASE_URL, KIS_IS_MOCK, KIS_CANO, KIS_ACNT_PRDT_CD, KIS_APP_KEY, KIS_APP_SECRET
 from kis_auth import get_headers, get_access_token
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 print('=== KIS API 진단 ===')
-print(f'IS_MOCK    : {KIS_IS_MOCK}')
-print(f'BASE_URL   : {KIS_BASE_URL}')
+print(f'IS_MOCK      : {KIS_IS_MOCK}')
+print(f'BASE_URL     : {KIS_BASE_URL}')
+print(f'ORDER_URL    : {KIS_ORDER_BASE_URL}')
 print(f'CANO       : {repr(KIS_CANO)} (길이: {len(KIS_CANO)})')
 print(f'ACNT_PRDT  : {repr(KIS_ACNT_PRDT_CD)} (길이: {len(KIS_ACNT_PRDT_CD)})')
 print(f'APP_KEY    : {KIS_APP_KEY[:8]}...' if KIS_APP_KEY else 'APP_KEY: None')
@@ -42,7 +43,7 @@ body = {
 }
 print(f'요청 body: {json.dumps(body, ensure_ascii=False)}')
 
-url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/trading/order-cash'
+url = f'{KIS_ORDER_BASE_URL}/uapi/domestic-stock/v1/trading/order-cash'
 verify = not KIS_IS_MOCK
 
 try:

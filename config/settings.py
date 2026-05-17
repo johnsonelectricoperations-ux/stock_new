@@ -12,6 +12,8 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
 KIS_BASE_URL = 'https://openapivts.koreainvestment.com:9443' if KIS_IS_MOCK else 'https://openapi.koreainvestment.com:9443'
+# 모의투자 주문 API는 조회 API와 포트가 다름 (9443 → 29443)
+KIS_ORDER_BASE_URL = 'https://openapivts.koreainvestment.com:29443' if KIS_IS_MOCK else 'https://openapi.koreainvestment.com:9443'
 
 _account = os.getenv('KIS_ACCOUNT_NO', '').replace('-', '')
 KIS_CANO = _account[:8]
