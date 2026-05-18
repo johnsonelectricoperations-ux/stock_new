@@ -534,6 +534,17 @@ def _heartbeat_watchdog():
                       exc=Exception(f'스케줄러 응답 없음 — {int(elapsed//60)}분 경과'))
 
 
+def _run_dashboard():
+    """Flask 대시보드를 별도 스레드에서 실행."""
+    try:
+        from dashboard import app
+        import logging as _logging
+        _logging.getLogger('werkzeug').setLevel(_logging.ERROR)
+        app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+    except Exception as e:
+        log_error('dashboard', e)
+
+
 def run_scheduler():
     global _last_heartbeat
     _last_heartbeat = time.time()
@@ -564,6 +575,9 @@ def main():
 
     watchdog_thread = threading.Thread(target=_heartbeat_watchdog, daemon=True)
     watchdog_thread.start()
+
+    dashboard_thread = threading.Thread(target=_run_dashboard, daemon=True)
+    dashboard_thread.start()
 
     print('시스템 동작 중... Ctrl+C 로 종료')
     app = build_app()

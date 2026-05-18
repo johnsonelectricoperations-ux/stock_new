@@ -34,6 +34,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         '/sell 종목코드 수량\n'
         '/sellall 종목코드\n'
         '/register 종목코드 수량 진입가 — 기존 보유 종목 등록 (주문 없음)\n'
+        '/snapshot — 대시보드 스냅샷 이미지 전송\n'
         '/pause — 자동매매 일시중지\n'
         '/resume — 자동매매 재개\n'
         '/stop — 시스템 종료'
@@ -260,6 +261,16 @@ async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f'이제 자동 매도 감시 대상에 포함됩니다.'
     )
 
+async def cmd_snapshot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not _check_auth(update): return
+    await update.message.reply_text('대시보드 스냅샷 생성 중...')
+    try:
+        from snapshot import generate_snapshot
+        img_bytes = generate_snapshot()
+        await update.message.reply_photo(photo=img_bytes, caption=f'대시보드 스냅샷 — {__import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M")}')
+    except Exception as e:
+        await update.message.reply_text(f'스냅샷 생성 실패: {e}')
+
 async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global _trading_paused
     if not _check_auth(update): return
@@ -294,6 +305,7 @@ def build_app():
     app.add_handler(CommandHandler('sell', cmd_sell))
     app.add_handler(CommandHandler('sellall', cmd_sellall))
     app.add_handler(CommandHandler('register', cmd_register))
+    app.add_handler(CommandHandler('snapshot', cmd_snapshot))
     app.add_handler(CommandHandler('pause', cmd_pause))
     app.add_handler(CommandHandler('resume', cmd_resume))
     app.add_handler(CommandHandler('stop', cmd_stop))

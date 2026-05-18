@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="refresh" content="30">
+<title>주식 자동매매 대시보드</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f1117; color: #e0e0e0; font-size: 14px; }
+  .header { background: #1a1d27; padding: 16px 24px; border-bottom: 1px solid #2a2d3a; display: flex; justify-content: space-between; align-items: center; }
+  .header h1 { font-size: 18px; font-weight: 600; color: #fff; }
+  .header .updated { color: #666; font-size: 12px; }
+  .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+  /* 상단 메트릭 카드 */
+  .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 20px; }
+  .metric-card { background: #1a1d27; border-radius: 8px; padding: 16px 20px; border: 1px solid #2a2d3a; }
+  .metric-card .label { color: #888; font-size: 12px; margin-bottom: 6px; }
+  .metric-card .value { font-size: 22px; font-weight: 700; color: #fff; }
+  .metric-card .sub { font-size: 12px; color: #888; margin-top: 4px; }
+  .pos { color: #26d96c; }
+  .neg { color: #ff4d6a; }
+  .neu { color: #fff; }
+
+  /* 2단 레이아웃 */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+
+  /* 패널 공통 */
+  .panel { background: #1a1d27; border-radius: 8px; border: 1px solid #2a2d3a; overflow: hidden; }
+  .panel-title { padding: 12px 16px; font-size: 13px; font-weight: 600; color: #aaa; border-bottom: 1px solid #2a2d3a; background: #161923; }
+
+  /* 보유 종목 */
+  .positions-table, .trades-table { width: 100%; border-collapse: collapse; }
+  .positions-table th, .trades-table th { padding: 8px 12px; text-align: left; font-size: 11px; color: #666; font-weight: 500; border-bottom: 1px solid #2a2d3a; }
+  .positions-table td, .trades-table td { padding: 9px 12px; border-bottom: 1px solid #1e2130; font-size: 13px; }
+  .positions-table tr:last-child td, .trades-table tr:last-child td { border-bottom: none; }
+  .positions-table tr:hover td, .trades-table tr:hover td { background: #1e2130; }
+  .empty { text-align: center; color: #555; padding: 24px; }
+
+  /* 성과 요약 */
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .stat-row { padding: 11px 16px; border-bottom: 1px solid #1e2130; display: flex; justify-content: space-between; align-items: center; }
+  .stat-row:last-child { border-bottom: none; }
+  .stat-label { color: #888; font-size: 12px; }
+  .stat-val { font-weight: 600; font-size: 14px; }
+
+  /* 차트 */
+  .chart-panel { margin-bottom: 20px; }
+  .chart-wrap { padding: 16px; height: 220px; position: relative; }
+
+  /* 거래 내역 */
+  .trades-panel {}
+  .trades-wrap { max-height: 320px; overflow-y: auto; }
+  .reason-tag { display: inline-block; padding: 2px 7px; border-radius: 4px; font-size: 11px; background: #2a2d3a; color: #aaa; }
+  .reason-tag.stop { background: #3a1a20; color: #ff6b7a; }
+  .reason-tag.trail { background: #3a2a10; color: #ffaa55; }
+  .reason-tag.partial { background: #1a2a1a; color: #55cc77; }
+  .reason-tag.momentum { background: #1a1a3a; color: #7799ff; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>주식 자동매매 대시보드</h1>
+  <span class="updated">업데이트: {{ updated_at }} (30초 자동 새로고침)</span>
+</div>
+<div class="container">
+
+  <!-- 상단 메트릭 -->
+  <div class="metrics">
+    <div class="metric-card">
+      <div class="label">총 평가금</div>
+      <div class="value">{{ '{:,}'.format(total_eval) }}원</div>
+      <div class="sub">운용규모 {{ '{:,}'.format(total_budget) }}원</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">누적 실현손익</div>
+      {% set rp = realized_pnl %}
+      <div class="value {{ 'pos' if rp >= 0 else 'neg' }}">{{ '{:+,}'.format(rp) }}원</div>
+      <div class="sub">{{ '{:+.2f}'.format(rp / total_budget * 100) }}%</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">승률 / 거래수</div>
+      <div class="value">{{ stats.win_rate }}%</div>
+      <div class="sub">{{ stats.wins }}승 {{ stats.losses }}패 (총 {{ stats.total }}건)</div>
+    </div>
+    <div class="metric-card">
+      <div class="label">손익비 / MDD</div>
+      <div class="value">{{ stats.pl_ratio }}</div>
+      <div class="sub">MDD {{ stats.mdd }}%</div>
+    </div>
+  </div>
+
+  <!-- 보유 종목 + 성과 요약 -->
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-title">보유 종목 ({{ positions|length }}종목)</div>
+      {% if positions %}
+      <table class="positions-table">
+        <thead>
+          <tr><th>종목</th><th>수량</th><th>진입가</th><th>현재가</th><th>수익률</th><th>손익</th></tr>
+        </thead>
+        <tbody>
+        {% for p in positions %}
+          <tr>
+            <td><strong>{{ p.name }}</strong><br><small style="color:#666">{{ p.code }}</small></td>
+            <td>{{ p.qty }}주</td>
+            <td>{{ '{:,}'.format(p.entry_price) }}</td>
+            <td>{{ '{:,}'.format(p.current_price) }}</td>
+            <td class="{{ 'pos' if p.rate >= 0 else 'neg' }}">{{ '{:+.2f}'.format(p.rate) }}%</td>
+            <td class="{{ 'pos' if p.profit >= 0 else 'neg' }}">{{ '{:+,}'.format(p.profit|int) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">보유 중인 종목 없음</div>
+      {% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">성과 요약</div>
+      <div class="stats-grid">
+        <div class="stat-row">
+          <span class="stat-label">총 거래</span>
+          <span class="stat-val">{{ stats.total }}건</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">승률</span>
+          <span class="stat-val">{{ stats.win_rate }}%</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">손익비</span>
+          <span class="stat-val">{{ stats.pl_ratio }}</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">MDD</span>
+          <span class="stat-val {{ 'neg' if stats.mdd < -5 else 'neu' }}">{{ stats.mdd }}%</span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">누적 수익</span>
+          <span class="stat-val {{ 'pos' if stats.cumulative_profit >= 0 else 'neg' }}">
+            {{ '{:+,}'.format(stats.cumulative_profit) }}원
+          </span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">수익률</span>
+          <span class="stat-val {{ 'pos' if stats.cumulative_rate >= 0 else 'neg' }}">
+            {{ '{:+.2f}'.format(stats.cumulative_rate) }}%
+          </span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">미실현 손익</span>
+          <span class="stat-val {{ 'pos' if unrealized >= 0 else 'neg' }}">
+            {{ '{:+,}'.format(unrealized|int) }}원
+          </span>
+        </div>
+        <div class="stat-row">
+          <span class="stat-label">운용규모</span>
+          <span class="stat-val">{{ '{:,}'.format(total_budget) }}원</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 누적 손익 차트 -->
+  <div class="panel chart-panel">
+    <div class="panel-title">누적 손익 추이 (거래별)</div>
+    <div class="chart-wrap">
+      <canvas id="pnlChart"></canvas>
+    </div>
+  </div>
+
+  <!-- 최근 거래 내역 -->
+  <div class="panel trades-panel">
+    <div class="panel-title">최근 거래 내역 (최대 30건)</div>
+    <div class="trades-wrap">
+      {% if recent_trades %}
+      <table class="trades-table">
+        <thead>
+          <tr><th>매도일</th><th>종목</th><th>진입가</th><th>매도가</th><th>수량</th><th>수익률</th><th>손익</th><th>사유</th></tr>
+        </thead>
+        <tbody>
+        {% for t in recent_trades %}
+          {% set rate = t.profit_rate|float %}
+          {% set profit = t.profit|int %}
+          <tr>
+            <td style="color:#666;font-size:12px">{{ t.exit_date }}</td>
+            <td><strong>{{ t.name }}</strong></td>
+            <td>{{ '{:,}'.format(t.entry_price|int) }}</td>
+            <td>{{ '{:,}'.format(t.exit_price|int) }}</td>
+            <td>{{ t.qty }}주</td>
+            <td class="{{ 'pos' if rate >= 0 else 'neg' }}">{{ '{:+.2f}'.format(rate) }}%</td>
+            <td class="{{ 'pos' if profit >= 0 else 'neg' }}">{{ '{:+,}'.format(profit) }}</td>
+            <td>
+              {% set r = t.reason %}
+              {% if '손절' in r %}
+                <span class="reason-tag stop">{{ r }}</span>
+              {% elif '트레일' in r %}
+                <span class="reason-tag trail">{{ r }}</span>
+              {% elif '부분' in r %}
+                <span class="reason-tag partial">{{ r }}</span>
+              {% elif '모멘텀' in r %}
+                <span class="reason-tag momentum">{{ r }}</span>
+              {% else %}
+                <span class="reason-tag">{{ r }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">완료된 거래 없음</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+<script>
+const labels = {{ chart_labels | tojson }};
+const values = {{ chart_values | tojson }};
+const ctx = document.getElementById('pnlChart').getContext('2d');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: labels,
+    datasets: [{
+      label: '누적 손익 (원)',
+      data: values,
+      borderColor: values.length && values[values.length-1] >= 0 ? '#26d96c' : '#ff4d6a',
+      backgroundColor: values.length && values[values.length-1] >= 0
+        ? 'rgba(38,217,108,0.08)' : 'rgba(255,77,106,0.08)',
+      borderWidth: 2,
+      pointRadius: values.length <= 30 ? 4 : 2,
+      pointBackgroundColor: values.map(v => v >= 0 ? '#26d96c' : '#ff4d6a'),
+      tension: 0.3,
+      fill: true,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => (ctx.raw >= 0 ? '+' : '') + ctx.raw.toLocaleString() + '원'
+        }
+      }
+    },
+    scales: {
+      x: {
+        ticks: { color: '#666', font: { size: 11 }, maxTicksLimit: 12 },
+        grid: { color: '#1e2130' }
+      },
+      y: {
+        ticks: {
+          color: '#666', font: { size: 11 },
+          callback: v => (v >= 0 ? '+' : '') + (v/10000).toFixed(0) + '만'
+        },
+        grid: { color: '#1e2130' }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
