@@ -560,15 +560,47 @@ def run_scheduler():
             log_error('run_scheduler', e, critical=True)
         time.sleep(30)
 
+def _restore_positions_from_balance():
+    """시작 시 KIS 잔고 조회로 보유 종목 자동 복구."""
+    try:
+        from kis_balance import get_balance
+        bal = get_balance()
+        for s in bal['stocks']:
+            code = s['code']
+            if code in positions:
+                continue
+            positions[code] = {
+                'name': s['name'], 'sector': '', 'qty': s['qty'],
+                'entry_price': s['avg_price'],
+                'entry_date': datetime.now().strftime('%Y-%m-%d'),
+                'entry_time': '',
+                'peak_price': s['avg_price'],
+                'min_price': s['avg_price'],
+                'break_even_set': False, 'floor_price': 0, 'partial_sold': False,
+            }
+        if positions:
+            names = ', '.join(p['name'] for p in positions.values())
+            log_info('main', f'잔고 자동 복구: {names}')
+            return f'보유 종목 자동 복구: {names}'
+        return None
+    except Exception as e:
+        log_error('restore_positions', e)
+        return None
+
+
 def main():
     global realized_pnl
     setup_logging()
     realized_pnl = _load_realized_pnl()
+    restored = _restore_positions_from_balance()
     log_info('main', f'시스템 시작. 실현손익={realized_pnl:+,}원')
-    send_message(
+    msg = (
         f'자동매매 시스템 시작. /help 로 명령어 확인.\n'
         f'누적 실현손익: {realized_pnl:+,}원 | 운용 기준금: {get_effective_budget():,}원'
     )
+    if restored:
+        msg += f'\n{restored}'
+    send_message(msg)
 
     scheduler_thread = threading.Thread(target=run_scheduler, daemon=True)
     scheduler_thread.start()
