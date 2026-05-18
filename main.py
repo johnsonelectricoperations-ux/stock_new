@@ -1,6 +1,7 @@
 # 자동매매 메인 루프 - 신호 생성, 주문 실행, 리스크 관리 통합
 import csv
 import os
+import sys
 import time
 import schedule
 import threading
@@ -567,4 +568,7 @@ def main():
     app.run_polling(stop_signals=None)
 
 if __name__ == '__main__':
+    # telegram_bot.py의 'from main import positions' 가
+    # __main__ 모듈과 동일한 객체를 참조하도록 등록
+    sys.modules['main'] = sys.modules['__main__']
     main()
