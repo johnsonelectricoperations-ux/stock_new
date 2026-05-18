@@ -533,8 +533,62 @@ def daily_report():
     # 오늘 시스템 동작 검증
     lines.append('\n' + _build_daily_check())
 
+    # 실전 전환 조건 점검
+    transition_msg = _check_real_trading_ready()
+    if transition_msg:
+        lines.append('\n' + transition_msg)
+
     send_message('\n'.join(lines))
     log_info('daily_report', '장 마감 결산 전송 완료')
+
+
+def _check_real_trading_ready() -> str | None:
+    """실전 전환 4가지 조건 모두 충족 시 안내 문구 반환, 미충족 시 None."""
+    import csv as _csv
+    results = []
+
+    # 1. 거래 30건 이상
+    try:
+        with open('trades.csv', 'r', encoding='utf-8') as f:
+            total = sum(1 for _ in _csv.DictReader(f))
+        results.append(('거래 건수', total >= 30, f'{total}건'))
+    except FileNotFoundError:
+        results.append(('거래 건수', False, '0건'))
+
+    # 2. 승률 45% 이상 + 손익비 1.5 이상
+    try:
+        with open('trades.csv', 'r', encoding='utf-8') as f:
+            trades = list(_csv.DictReader(f))
+        profits = [float(t['profit_rate']) for t in trades]
+        wins    = [p for p in profits if p > 0]
+        losses  = [p for p in profits if p <= 0]
+        win_rate = len(wins) / len(profits) * 100 if profits else 0
+        avg_win  = sum(wins) / len(wins) if wins else 0
+        avg_loss = abs(sum(losses) / len(losses)) if losses else 1
+        pl_ratio = avg_win / avg_loss if avg_loss > 0 else 0
+        results.append(('승률', win_rate >= 45, f'{win_rate:.0f}%'))
+        results.append(('손익비', pl_ratio >= 1.5, f'{pl_ratio:.2f}'))
+    except FileNotFoundError:
+        results.append(('승률', False, '0%'))
+        results.append(('손익비', False, '0'))
+
+    # 3. 최근 14일 에러 없음
+    try:
+        from error_monitor import get_recent_errors
+        from datetime import timedelta
+        cutoff = (datetime.now() - timedelta(days=14)).strftime('%Y-%m-%d')
+        err_text = get_recent_errors(50)
+        recent_errors = [line for line in err_text.splitlines()
+                         if line.strip() and line[:10] >= cutoff and line[:4].isdigit()]
+        results.append(('2주 안정 운영', len(recent_errors) == 0, f'에러 {len(recent_errors)}건'))
+    except Exception:
+        results.append(('2주 안정 운영', False, '확인 불가'))
+
+    if all(ok for _, ok, _ in results):
+        detail = ' | '.join(f'{name} {val}' for name, _, val in results)
+        return f'🎉 실전 전환 조건 모두 충족 ({detail})\n이제 실전 거래로 전환해보시겠어요?'
+
+    return None
 
 
 def _build_daily_check() -> str:
