@@ -14,22 +14,29 @@ _HEADERS = {
 
 
 def _get_kospi200_spot() -> float | None:
-    """KODEX 200(069500) 현재가 × 10 으로 KOSPI 200 지수 근사값 계산."""
+    """KODEX 200(069500) 현재가 ÷ 100 으로 KOSPI 200 지수 포인트 근사값 계산.
+    KODEX 200 가격 ≈ KOSPI200 포인트 × 100 관계 이용.
+    """
     try:
-        return get_current_price('069500')['price'] * 10
+        return round(get_current_price('069500')['price'] / 100, 2)
     except Exception:
         return None
 
 
 def _get_vkospi() -> float | None:
-    """네이버 모바일 API로 VKOSPI(한국 변동성 지수) 조회 — 국면 판단 보조 지표."""
-    url = 'https://m.stock.naver.com/api/index/VKOSPI/basic'
+    """네이버 polling API로 VKOSPI(한국 변동성 지수) 조회 — 국면 판단 보조 지표.
+    장 외 시간에는 None 반환 (datas 빈 배열).
+    """
+    url = 'https://polling.finance.naver.com/api/realtime/domestic/index/VKOSPI'
     try:
         res = requests.get(url, headers=_HEADERS, timeout=10)
         res.raise_for_status()
-        data = res.json()
-        price_str = data.get('closePrice', '')
-        val = float(price_str.replace(',', ''))
+        datas = res.json().get('datas', [])
+        if not datas:
+            return None
+        item = datas[0]
+        price_str = item.get('closePrice') or item.get('currentPrice', '')
+        val = float(str(price_str).replace(',', ''))
         return val if val > 0 else None
     except Exception:
         return None
