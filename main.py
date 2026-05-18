@@ -139,7 +139,8 @@ def morning_routine():
 
     # 신규 매수 가능 슬롯 및 가용 현금 계산
     new_slots = MAX_STOCK_COUNT - len(positions)
-    available_cash = get_available_cash()
+    # 시장가 매수 슬리피지·수수료 감안해 가용현금의 98%만 사용
+    available_cash = int(get_available_cash() * 0.98)
 
     if new_slots <= 0:
         send_message(f'포지션이 가득 찼습니다 ({len(positions)}/{MAX_STOCK_COUNT}종목). 매수 보류.')

@@ -81,11 +81,13 @@ async def cmd_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-    remaining = TOTAL_BUDGET - invested
+    from main import realized_pnl
+    remaining = TOTAL_BUDGET + realized_pnl - invested
     lines.append(f'\n투자금: {invested:,}원')
     lines.append(f'평가금: {eval_amt:,}원')
     lines.append(f'잔여예수금: {remaining:,}원')
-    lines.append(f'중 수익: {profit_loss:+,}원')
+    lines.append(f'미실현 수익: {profit_loss:+,}원')
+    lines.append(f'누적 실현손익: {realized_pnl:+,}원')
 
     await update.message.reply_text('\n'.join(lines))
 
