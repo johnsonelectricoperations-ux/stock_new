@@ -22,7 +22,7 @@ KIS_ACNT_PRDT_CD = _account[8:] if len(_account) > 8 else os.getenv('KIS_ACNT_PR
 # 운용 설정
 TOTAL_BUDGET = int(os.getenv('TOTAL_BUDGET', '10000000'))
 MAX_STOCK_COUNT = int(os.getenv('MAX_STOCK_COUNT', '4'))      # 전체 통과 종목 중 모멘텀 상위 4종목
-STOP_LOSS_RATE       = float(os.getenv('STOP_LOSS_RATE', '0.10'))
+STOP_LOSS_RATE       = float(os.getenv('STOP_LOSS_RATE', '0.05'))
 TRAIL_STOP_RATE      = float(os.getenv('TRAIL_STOP_RATE', '0.12'))
 EMERGENCY_STOP_RATE  = float(os.getenv('EMERGENCY_STOP_RATE', '0.15'))  # 즉시 손절 (캔들 확인 없음)
 MOMENTUM_EXIT_RATE   = float(os.getenv('MOMENTUM_EXIT_RATE', '0.10'))   # 모멘텀 약화 익절 발동 최소 수익률
