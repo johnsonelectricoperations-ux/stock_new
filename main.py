@@ -530,8 +530,72 @@ def daily_report():
     else:
         lines.append(f'\n[내일 매수 계획]\n  가용 현금 부족 ({available:,}원). 신규 매수 보류.')
 
+    # 오늘 시스템 동작 검증
+    lines.append('\n' + _build_daily_check())
+
     send_message('\n'.join(lines))
     log_info('daily_report', '장 마감 결산 전송 완료')
+
+
+def _build_daily_check() -> str:
+    """오늘 시스템 동작 검증 요약 — daily_report 및 /check 명령 공용."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    items = []
+
+    # 1. 베이시스 / VKOSPI 수집
+    try:
+        with open('basis_log.csv', 'r', encoding='utf-8') as f:
+            rows = [r for r in csv.DictReader(f) if r.get('date') == today]
+        if rows:
+            r = rows[-1]
+            basis_ok  = '✅' if r.get('basis') else '⚠️ 선물 없음'
+            vkospi_ok = f'✅ {float(r["vkospi"]):.2f}' if r.get('vkospi') else '⚠️ 장 중 미수집'
+            items.append(f'베이시스 수집: {basis_ok} | VKOSPI: {vkospi_ok}')
+        else:
+            items.append('베이시스 수집: ❌ 오늘 기록 없음')
+    except FileNotFoundError:
+        items.append('베이시스 수집: ❌ basis_log.csv 없음')
+
+    # 2. 신호 스캔 (signal_log)
+    try:
+        with open('signal_log.csv', 'r', encoding='utf-8') as f:
+            rows = [r for r in csv.DictReader(f) if r.get('date') == today]
+        if rows:
+            has_bb  = any(r.get('bb_pct') for r in rows)
+            has_atr = any(r.get('atr') for r in rows)
+            selected = sum(1 for r in rows if r.get('selected') == 'True')
+            passed   = sum(1 for r in rows if r.get('passed_all_filters') == 'True')
+            items.append(
+                f'신호 스캔: ✅ {len(rows)}종목 분석 | 필터통과 {passed} | 선정 {selected} | '
+                f'BB%B {"✅" if has_bb else "❌"} | ATR {"✅" if has_atr else "❌"}'
+            )
+        else:
+            items.append('신호 스캔: ❌ 오늘 기록 없음 (매수 신호 없거나 하락장 중단)')
+    except FileNotFoundError:
+        items.append('신호 스캔: ❌ signal_log.csv 없음')
+
+    # 3. 오늘 거래 (trades)
+    try:
+        with open('trades.csv', 'r', encoding='utf-8') as f:
+            trades = [r for r in csv.DictReader(f) if r.get('exit_date') == today]
+        if trades:
+            total_profit = sum(int(t['profit']) for t in trades)
+            items.append(f'오늘 거래: {len(trades)}건 완료 | 손익 {total_profit:+,}원')
+        else:
+            items.append('오늘 거래: 없음')
+    except FileNotFoundError:
+        items.append('오늘 거래: 없음')
+
+    # 4. 에러 현황
+    try:
+        from error_monitor import get_recent_errors
+        err_text = get_recent_errors(5)
+        today_errors = err_text.count(today)
+        items.append(f'오늘 에러: {"⚠️ " + str(today_errors) + "건" if today_errors else "✅ 없음"}')
+    except Exception:
+        items.append('에러 현황: 확인 불가')
+
+    return '[오늘 시스템 검증]\n' + '\n'.join(f'  {i}' for i in items)
 
 
 def _heartbeat_watchdog():
