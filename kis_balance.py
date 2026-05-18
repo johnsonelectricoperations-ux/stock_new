@@ -1,13 +1,13 @@
 # KIS API 계좌 잔고 조회 모듈
 import requests
 import urllib3
-from config.settings import KIS_BASE_URL, KIS_IS_MOCK, KIS_CANO, KIS_ACNT_PRDT_CD
+from config.settings import KIS_ORDER_BASE_URL, KIS_IS_MOCK, KIS_CANO, KIS_ACNT_PRDT_CD
 from kis_auth import get_headers
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 def get_balance():
-    url = f'{KIS_BASE_URL}/uapi/domestic-stock/v1/trading/inquire-balance'
+    url = f'{KIS_ORDER_BASE_URL}/uapi/domestic-stock/v1/trading/inquire-balance'
     tr_id = 'VTTC8434R' if KIS_IS_MOCK else 'TTTC8434R'
     headers = get_headers(tr_id)
     params = {
