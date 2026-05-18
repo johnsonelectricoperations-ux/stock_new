@@ -272,6 +272,8 @@ def _execute_buy(s: dict, available_cash: int, total_signals: int,
     code = s['code']
     info = get_current_price(code)
     qty = calc_quantity(info['price'], total_signals, effective_budget=available_cash)
+    if qty <= 0:
+        raise Exception(f"예산 부족 — 종목당 {available_cash // total_signals:,}원으로 {info['price']:,}원짜리 매수 불가")
     buy_stock(code, qty)
     now = datetime.now()
     positions[code] = {

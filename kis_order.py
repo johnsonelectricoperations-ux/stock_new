@@ -76,7 +76,7 @@ def calc_quantity(price, stock_count=None, effective_budget=None):
     count = stock_count or MAX_STOCK_COUNT
     budget = effective_budget if effective_budget is not None else TOTAL_BUDGET
     budget_per_stock = budget // count
-    return max(1, budget_per_stock // price)
+    return budget_per_stock // price  # 0이면 호출부에서 매수 건너뜀
 
 if __name__ == '__main__':
     from kis_data import get_current_price
