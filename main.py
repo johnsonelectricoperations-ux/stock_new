@@ -176,70 +176,66 @@ def morning_routine():
         f'(총자산: {get_effective_budget():,}원 | 투자중: {get_invested_capital():,}원)'
     ]
 
-    # 09:10~09:30 눌림목 진입 루프 (1분 주기, 전 종목 동시 체크)
-    deadline = datetime.now().replace(hour=9, minute=30, second=0, microsecond=0)
-    pending = list(signals)  # 아직 매수 안 된 종목
+    # 09:15~10:00 분봉 조건부 진입 루프
+    # - 09:15~09:30: 눌림목 조건 (현재가 > 직전 1분봉 고가 AND > 5분 MA)
+    # - 09:30~10:00: 완화 조건 (현재가 > 5분 MA만 확인, 고가 돌파 제외)
+    # - 10:00 도달: 조건 미충족 종목 매수 포기 (강제 매수 없음)
+    strict_deadline   = datetime.now().replace(hour=9,  minute=30, second=0, microsecond=0)
+    extended_deadline = datetime.now().replace(hour=10, minute=0,  second=0, microsecond=0)
+    pending = list(signals)
 
     while pending:
-        _last_heartbeat = time.time()  # 워치독 오경보 방지
+        _last_heartbeat = time.time()
+        now = datetime.now()
+
+        if now >= extended_deadline:
+            # 10:00 초과 — 조건 미충족 종목 매수 포기
+            for s in pending:
+                log_timing(s['code'], s['name'], False, 'skipped_timeout')
+                msg_lines.append(f"⏱ {s['name']} 10:00까지 진입 조건 미충족 — 오늘 매수 포기")
+            break
+
+        relaxed = now >= strict_deadline  # 09:30 이후면 완화 조건 사용
         still_pending = []
+
         for s in list(pending):
             code = s['code']
             try:
-                dip_met = _check_dip_entry(code)
+                dip_met = _check_dip_entry(code, relaxed=relaxed)
                 if dip_met:
                     msg_lines.append(_execute_buy(
                         s, available_cash, total_signals,
-                        kospi_trend=kospi_trend, dip_entry_used=True,
+                        kospi_trend=kospi_trend, dip_entry_used=not relaxed,
                     ))
-                    log_timing(code, s['name'], True, 'bought_dip')
+                    log_timing(code, s['name'], True,
+                               'bought_relaxed' if relaxed else 'bought_dip')
                 else:
                     still_pending.append(s)
                     log_timing(code, s['name'], False, 'waiting')
-                    log_info('morning_routine', f"{s['name']} 눌림목 조건 미충족 — 다음 분 재확인")
+                    log_info('morning_routine',
+                             f"{s['name']} {'완화' if relaxed else '눌림목'} 조건 미충족 — 다음 분 재확인")
                 time.sleep(0.3)
             except Exception as e:
                 log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
                 log_timing(code, s['name'], True, 'buy_failed')
                 s['_attempts'] = s.get('_attempts', 0) + 1
                 if s['_attempts'] < 3:
-                    still_pending.append(s)  # 1분 뒤 재시도
-                    log_info('morning_routine', f"{s['name']} 매수 실패 ({s['_attempts']}회) — 재시도 예정")
+                    still_pending.append(s)
+                    log_info('morning_routine',
+                             f"{s['name']} 매수 실패 ({s['_attempts']}회) — 재시도 예정")
                 else:
                     msg_lines.append(f"⚠️ {s['name']} 매수 3회 실패, 포기: {e}")
 
         pending = still_pending
         if pending:
-            if datetime.now() >= deadline:
-                # 09:30 초과 — 남은 종목 강제 시장가 매수 (최대 3회 시도)
-                log_info('morning_routine', f'09:30 초과 — {len(pending)}종목 강제 매수')
-                for s in pending:
-                    for attempt in range(3):
-                        try:
-                            msg_lines.append(_execute_buy(
-                                s, available_cash, total_signals,
-                                kospi_trend=kospi_trend, dip_entry_used=False,
-                            ))
-                            log_timing(s['code'], s['name'], False, 'forced_bought')
-                            break
-                        except Exception as e:
-                            if attempt < 2:
-                                log_info('morning_routine',
-                                         f"{s['name']} 강제매수 실패({attempt+1}회) — {5}초 후 재시도")
-                                time.sleep(5)
-                            else:
-                                log_error(f'morning_routine:force_buy:{s["code"]}', e, critical=True)
-                                log_timing(s['code'], s['name'], False, 'forced_failed')
-                                msg_lines.append(f"⚠️ {s['name']} 강제 매수 최종 실패: {e}")
-                    time.sleep(0.3)
-                break
-            time.sleep(60)  # 1분 대기 후 재확인
+            time.sleep(60)
 
     send_message('\n\n'.join(msg_lines))
 
-def _check_dip_entry(code: str) -> bool:
-    """눌림목 진입 조건 확인.
-    조건: 현재가 > 직전 1분봉 고가 (상승 전환) AND 현재가 > 최근 5분 종가 평균
+def _check_dip_entry(code: str, relaxed: bool = False) -> bool:
+    """분봉 진입 조건 확인.
+    - 일반(09:30 이전): 현재가 > 직전 1분봉 고가 AND > 5분 MA (눌림목 돌파)
+    - 완화(09:30 이후): 현재가 > 5분 MA만 확인 (고가 돌파 조건 제외)
     데이터 부족 or API 실패 시 True 반환 (즉시 진입)
     """
     try:
@@ -249,10 +245,11 @@ def _check_dip_entry(code: str) -> bool:
         current   = candles[0]['close']
         prev_high = candles[1]['high']
         ma5       = sum(c['close'] for c in candles[1:6]) / 5
-        result = current > prev_high and current > ma5
-        return result
+        if relaxed:
+            return current > ma5          # 09:30 이후: MA5 위에 있으면 진입
+        return current > prev_high and current > ma5
     except Exception:
-        return True  # 조회 실패 시 즉시 진입
+        return True
 
 
 def _get_candle_sell_info(code: str) -> dict | None:
