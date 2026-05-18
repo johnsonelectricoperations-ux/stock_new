@@ -595,6 +595,15 @@ def _build_daily_check() -> str:
     except Exception:
         items.append('에러 현황: 확인 불가')
 
+    # 5. 네이버 테마 크롤링 상태
+    try:
+        from naver_theme import get_crawl_source
+        src = get_crawl_source()
+        label = {'live': '✅ 정상 크롤링', 'cache': '⚠️ 캐시 사용 (크롤링 실패)', 'fallback': '❌ 하드코딩 폴백 (크롤링+캐시 모두 실패)'}.get(src, '— 오늘 미실행')
+        items.append(f'테마 크롤링: {label}')
+    except Exception:
+        items.append('테마 크롤링: 확인 불가')
+
     return '[오늘 시스템 검증]\n' + '\n'.join(f'  {i}' for i in items)
 
 

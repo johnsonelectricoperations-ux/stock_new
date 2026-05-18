@@ -19,6 +19,12 @@ _HEADERS = {
 MIN_MKTCAP_BIL = 5000   # 시총 최소 5000억 (억원 단위)
 MAX_STOCKS_PER_THEME = 5
 
+_crawl_source = 'unknown'  # 마지막 get_top_themes() 호출 결과: live | cache | fallback
+
+
+def get_crawl_source() -> str:
+    return _crawl_source
+
 # 3단계 폴백 — 하드코딩 기본 테마
 FALLBACK_THEMES = {
     '반도체': [('005930', '삼성전자'), ('000660', 'SK하이닉스'), ('009150', '삼성전기'), ('042700', '한미반도체'), ('000760', 'DB하이텍')],
@@ -139,6 +145,8 @@ def get_top_themes(n: int = 12) -> dict:
     2단계: 어제 캐시
     3단계: 하드코딩 폴백 10개 테마
     """
+    global _crawl_source
+
     # 1단계: 크롤링
     for attempt in range(3):
         try:
@@ -158,6 +166,7 @@ def get_top_themes(n: int = 12) -> dict:
 
             if len(result) >= max(n // 2, 5):
                 _save_cache(result)
+                _crawl_source = 'live'
                 print(f'[테마] 크롤링 성공 — {len(result)}개 테마')
                 return result
         except Exception as e:
@@ -168,11 +177,13 @@ def get_top_themes(n: int = 12) -> dict:
     # 2단계: 캐시
     cached = _load_cache()
     if cached:
+        _crawl_source = 'cache'
         _notify('⚠️ 테마 크롤링 실패 — 어제 캐시 데이터로 대체합니다.')
         print('[테마] 캐시 사용')
         return cached
 
     # 3단계: 하드코딩
+    _crawl_source = 'fallback'
     _notify('⚠️ 테마 크롤링 + 캐시 모두 실패 — 기본 10개 테마로 대체합니다.')
     print('[테마] 하드코딩 폴백 사용')
     return FALLBACK_THEMES
