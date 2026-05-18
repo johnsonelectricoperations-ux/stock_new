@@ -21,6 +21,20 @@ def _get_kospi200_spot() -> float | None:
         return None
 
 
+def _get_vkospi() -> float | None:
+    """네이버 모바일 API로 VKOSPI(한국 변동성 지수) 조회 — 국면 판단 보조 지표."""
+    url = 'https://m.stock.naver.com/api/index/VKOSPI/basic'
+    try:
+        res = requests.get(url, headers=_HEADERS, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        price_str = data.get('closePrice', '')
+        val = float(price_str.replace(',', ''))
+        return val if val > 0 else None
+    except Exception:
+        return None
+
+
 def _get_kospi200_futures() -> float | None:
     """네이버 모바일 API로 KOSPI 200 선물 지수 조회."""
     url = 'https://m.stock.naver.com/api/index/FUT/basic'
@@ -46,7 +60,8 @@ def get_basis() -> dict | None:
     spot = _get_kospi200_spot()
     if spot is None:
         return None
-    futures = _get_kospi200_futures()
+    futures  = _get_kospi200_futures()
+    vkospi   = _get_vkospi()
     if futures is not None:
         basis = round(futures - spot, 2)
         basis_pct = round(basis / spot * 100, 4)
@@ -71,4 +86,5 @@ def get_basis() -> dict | None:
         'basis': basis,
         'basis_pct': basis_pct,
         'basis_slope': slope,
+        'vkospi': vkospi,   # 한국 변동성 지수 — 국면 판단 보조 (MA60 + 변동성 결합용)
     }

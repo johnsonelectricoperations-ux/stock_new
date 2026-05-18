@@ -296,6 +296,7 @@ def _execute_buy(s: dict, available_cash: int, total_signals: int,
         'volume_ratio': s.get('volume_ratio'),
         'kospi_trend': kospi_trend,
         'dip_entry_used': dip_entry_used,
+        'atr': s.get('atr'),   # ATR 기반 동적 트레일링용
     }
     log_info('morning_routine', f"매수 체결: {s['name']}({code}) {info['price']:,}원 × {qty}주")
     return (
@@ -415,9 +416,19 @@ def monitor_positions():
             # ── 매도 트리거 계산 (비대칭 손절: 하락장 국면이면 손절 폭 타이트하게)
             effective_stop_rate = STOP_LOSS_RATE * 0.6 if not _kospi_bullish else STOP_LOSS_RATE
             stop_loss_price  = entry * (1 - effective_stop_rate)
-            trail_stop_price = peak  * (1 - TRAIL_STOP_RATE)
-            floor_price      = pos.get('floor_price', 0)
-            sell_trigger     = max(stop_loss_price, trail_stop_price, floor_price)
+
+            # ATR 기반 동적 트레일링: +7% 이상 구간에서 peak - 1.5*ATR 적용
+            # 변동성 작은 종목은 짧게, 주도주(변동성 큰 종목)는 길게 가져가는 효과
+            atr = pos.get('atr')
+            if atr and rate >= BREAK_EVEN_TRIGGER:
+                atr_trail = peak - 1.5 * atr
+                fixed_trail = peak * (1 - TRAIL_STOP_RATE)
+                trail_stop_price = max(atr_trail, fixed_trail)  # 둘 중 높은 쪽(더 타이트한 쪽)
+            else:
+                trail_stop_price = peak * (1 - TRAIL_STOP_RATE)
+
+            floor_price  = pos.get('floor_price', 0)
+            sell_trigger = max(stop_loss_price, trail_stop_price, floor_price)
 
             # ── 시간 손절
             days_held = _trading_days_held(pos.get('entry_date', ''))

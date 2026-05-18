@@ -12,7 +12,7 @@ TIMING_LOG = 'timing_log.csv'
 FOLLOWUP_LOG = 'followup_log.csv'
 FOLLOWUP_PENDING = 'config/followup_pending.json'
 
-_BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct', 'basis_slope']
+_BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct', 'basis_slope', 'vkospi']
 _TIMING_HEADERS = ['date', 'code', 'name', 'check_time', 'dip_met', 'action']
 
 _HEADERS = [
@@ -55,6 +55,7 @@ def log_basis(data: dict):
             data.get('basis') or '',
             data.get('basis_pct') or '',
             data.get('basis_slope') or '',
+            data.get('vkospi') or '',
         ])
 
 
