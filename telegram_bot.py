@@ -176,6 +176,7 @@ async def cmd_sell(update: Update, context: ContextTypes.DEFAULT_TYPE):
             log_trade(
                 code=code, name=pos['name'], sector=pos.get('sector', ''),
                 entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
+                entry_time=pos.get('entry_time', ''),
                 entry_price=pos['entry_price'], exit_price=info['price'],
                 qty=qty, reason='수동매도',
             )
@@ -210,6 +211,7 @@ async def cmd_sellall(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_trade(
             code=code, name=pos['name'], sector=pos.get('sector', ''),
             entry_date=pos.get('entry_date', datetime.now().strftime('%Y-%m-%d')),
+            entry_time=pos.get('entry_time', ''),
             entry_price=pos['entry_price'], exit_price=info['price'],
             qty=pos['qty'], reason='수동전량매도',
         )
