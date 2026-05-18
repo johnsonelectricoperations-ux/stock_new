@@ -33,6 +33,7 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         '/buy 종목코드 수량\n'
         '/sell 종목코드 수량\n'
         '/sellall 종목코드\n'
+        '/register 종목코드 수량 진입가 — 기존 보유 종목 등록 (주문 없음)\n'
         '/pause — 자동매매 일시중지\n'
         '/resume — 자동매매 재개\n'
         '/stop — 시스템 종료'
@@ -220,6 +221,45 @@ async def cmd_sellall(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f'매도 실패: {e}')
 
+async def cmd_register(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """KIS 계좌에 이미 보유 중인 종목을 positions에 수동 등록 (실제 주문 없음)."""
+    if not _check_auth(update): return
+    if len(context.args) != 3:
+        await update.message.reply_text('사용법: /register 종목코드 수량 진입가\n예: /register 036930 20 162100')
+        return
+    from main import positions
+    from kis_data import get_current_price
+    code = context.args[0]
+    try:
+        qty = int(context.args[1])
+        entry_price = int(context.args[2])
+    except ValueError:
+        await update.message.reply_text('수량과 진입가는 숫자로 입력하세요.')
+        return
+    if code in positions:
+        await update.message.reply_text(f'{code} 이미 positions에 등록되어 있습니다.')
+        return
+    try:
+        info = get_current_price(code)
+        name = info.get('name', code)
+    except Exception:
+        name = code
+    positions[code] = {
+        'name': name, 'sector': '', 'qty': qty,
+        'entry_price': entry_price,
+        'entry_date': datetime.now().strftime('%Y-%m-%d'),
+        'entry_time': '',
+        'peak_price': entry_price,
+        'min_price': entry_price,
+        'break_even_set': False, 'floor_price': 0, 'partial_sold': False,
+    }
+    rate = (info['price'] - entry_price) / entry_price * 100
+    await update.message.reply_text(
+        f'{name}({code}) {qty}주 등록 완료.\n'
+        f'진입가: {entry_price:,}원 | 현재가: {info["price"]:,}원 | {rate:+.2f}%\n'
+        f'이제 자동 매도 감시 대상에 포함됩니다.'
+    )
+
 async def cmd_pause(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global _trading_paused
     if not _check_auth(update): return
@@ -253,6 +293,7 @@ def build_app():
     app.add_handler(CommandHandler('buy', cmd_buy))
     app.add_handler(CommandHandler('sell', cmd_sell))
     app.add_handler(CommandHandler('sellall', cmd_sellall))
+    app.add_handler(CommandHandler('register', cmd_register))
     app.add_handler(CommandHandler('pause', cmd_pause))
     app.add_handler(CommandHandler('resume', cmd_resume))
     app.add_handler(CommandHandler('stop', cmd_stop))
