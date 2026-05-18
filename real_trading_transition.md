@@ -1,7 +1,7 @@
 # 실전 투자 전환 가이드
 
 > 모의투자 검증 완료 후 이 문서 순서대로 진행할 것.
-> 마지막 업데이트: 2026-05-17
+> 마지막 업데이트: 2026-05-18
 
 ---
 
@@ -47,6 +47,8 @@ rm ~/stock-bot/config/token_cache.json
 ## 3. kis_balance.py 활성화 (중요)
 
 현재 가용현금 계산이 `settings.py` 고정값 기반. 실전에서는 실제 예수금 조회로 교체해야 함.
+
+> **참고**: 2026-05-18 모의투자에서 kis_balance.py 정상 작동 확인됨 (포트 29443 수정 후). 잔고 조회 API 자체는 문제없음.
 
 ### main.py 수정
 
@@ -136,12 +138,13 @@ profit = round((exit_price - entry_price) * qty) - fee
 
 모의투자 개발 중 발견된 사항. 이미 코드에 반영되어 있으므로 별도 수정 불필요.
 
-| 환경 | 조회 API | 주문 API |
-|------|----------|----------|
+| 환경 | 조회 API (현재가·일봉 등) | 주문·잔고 API |
+|------|--------------------------|--------------|
 | 모의투자 | `:9443` | `:29443` |
 | 실전 | `:9443` | `:9443` |
 
 `config/settings.py`의 `KIS_ORDER_BASE_URL`이 `KIS_IS_MOCK` 값에 따라 자동 분기.
+`kis_order.py`(주문)와 `kis_balance.py`(잔고조회) 모두 `KIS_ORDER_BASE_URL` 사용.
 `.env`에서 `KIS_IS_MOCK=false`로만 바꾸면 포트도 자동으로 9443으로 통일됨.
 
 ---
@@ -218,7 +221,28 @@ if _is_expiry_day():
 
 ---
 
-## 10. SSL 검증 (자동 처리됨)
+## 10. 매수 예산 안전마진 (이미 처리됨)
+
+`morning_routine()`에서 가용현금의 95%만 매수에 사용.
+시장가 매수 슬리피지·수수료로 인한 잔고 초과 방지 목적.
+실전 전환 후 `kis_balance.py`로 실잔고 조회가 활성화되면 안전마진은 그대로 유지.
+
+---
+
+## 11. 서버 재시작 후 포지션 복구 명령어 (이미 처리됨)
+
+시스템 재시작 시 `positions`가 초기화되므로, KIS 계좌에 남은 종목을 코드에 재등록해야 자동 매도 감시가 재개됨.
+
+```
+텔레그램: /register 종목코드 수량 진입가
+예: /register 005930 10 75000
+```
+
+실전 전환 후에도 동일하게 사용 가능. 재시작 직후 `venv/bin/python3 kis_balance.py`로 보유 종목 확인 후 등록.
+
+---
+
+## 12. SSL 검증 (자동 처리됨)
 
 현재 모의투자 서버의 SSL 인증서 불일치로 `verify=False` 적용 중.
 `KIS_IS_MOCK=false`로 변경하면 코드 내 모든 `verify = not KIS_IS_MOCK`이 자동으로 `True`가 됨.
@@ -274,12 +298,25 @@ tail -f ~/stock-bot/error.log
 
 ## 체크리스트 요약
 
+**전환 전 달성 조건.**
 - [ ] 모의투자 30건 이상, 승률 45%+, 손익비 1.5+, 2주 안정 운영 확인
+
+**코드 수정 필요 (수동).**
 - [ ] .env — KIS_IS_MOCK=false, 실전 앱키/시크릿/계좌번호/예산 입력
 - [ ] token_cache.json 삭제
-- [ ] kis_balance.py 활성화 (main.py get_available_cash 교체)
-- [ ] 수수료/세금 반영 (performance.py, main.py profit 계산)
+- [ ] kis_balance.py 활성화 (main.py get_available_cash 교체, 섹션 3 참고)
+- [ ] 수수료/세금 반영 (performance.py, main.py profit 계산, 섹션 4 참고)
 - [ ] MAX_STOCK_COUNT 투자금 규모에 맞게 재확인
-- [ ] 만기일 필터 추가 (morning_routine)
-- [ ] diagnose_order.py 로 주문 API 정상 확인
+- [ ] 만기일 필터 추가 (morning_routine, 섹션 8 참고)
+
+**자동 처리됨 (수정 불필요).**
+- [x] 포트 설정 — KIS_IS_MOCK=false 시 주문·잔고 API 모두 9443 자동 적용
+- [x] SSL 검증 — KIS_IS_MOCK=false 시 자동 활성화
+- [x] custtype 헤더 — 이미 포함됨
+- [x] 매수 예산 5% 안전마진 — 이미 적용됨
+- [x] /register 명령어 — 재시작 후 포지션 복구용, 실전에서도 동일 사용
+
+**전환 당일.**
+- [ ] diagnose_order.py 로 주문 API 정상 확인 (장 시간 중)
 - [ ] 소액 수동 매수/매도 테스트 후 본격 자동매매 시작
+- [ ] 재시작 후 kis_balance.py 실행해 잔고 확인
