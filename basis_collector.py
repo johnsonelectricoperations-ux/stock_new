@@ -1,4 +1,6 @@
 # KOSPI 200 베이시스(선물가 - 현물지수) 수집 모듈 (임계값 튜닝용 데이터 축적)
+import csv
+import os
 import requests
 from datetime import datetime, timedelta
 from kis_data import get_current_price
@@ -50,9 +52,23 @@ def get_basis() -> dict | None:
         basis_pct = round(basis / spot * 100, 4)
     else:
         basis = basis_pct = None
+    # 베이시스 기울기 (slope) — 전일 대비 변화량, Slope Momentum 임계값 결정용 데이터
+    slope = None
+    try:
+        if basis is not None and os.path.exists('basis_log.csv'):
+            with open('basis_log.csv', 'r', encoding='utf-8') as f:
+                rows = list(csv.DictReader(f))
+            prev_rows = [r for r in rows if r.get('basis')]
+            if prev_rows:
+                prev_basis = float(prev_rows[-1]['basis'])
+                slope = round(basis - prev_basis, 4)
+    except Exception:
+        pass
+
     return {
         'spot': spot,
         'futures': futures,
         'basis': basis,
         'basis_pct': basis_pct,
+        'basis_slope': slope,
     }

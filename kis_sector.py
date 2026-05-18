@@ -1,8 +1,10 @@
 # 동적 테마 기반 주도 테마 판별 및 대장주 선정 모듈
 import time
-from kis_indicator import get_daily_ohlcv
+from kis_indicator import get_daily_ohlcv, calc_atr
 from kis_foreign import is_foreign_buying
 from naver_theme import get_top_themes
+
+BB_PCT_MAX = 0.85   # 볼린저 밴드 %B 상단 임계값 — 초과 시 과열 종목 제외
 
 
 def _analyze_stock(code: str) -> dict | None:
@@ -11,28 +13,47 @@ def _analyze_stock(code: str) -> dict | None:
         return None
     df['ma20'] = df['close'].rolling(20).mean()
     df['ma60'] = df['close'].rolling(60).mean()
+    std20 = df['close'].rolling(20).std()
     latest = df.iloc[-1]
-    price = latest['close']
-    ma20 = latest['ma20']
-    ma60 = latest['ma60']
+    price  = latest['close']
+    ma20   = latest['ma20']
+    ma60   = latest['ma60']
+    bb_upper = ma20 + 2 * std20.iloc[-1]
+    bb_lower = ma20 - 2 * std20.iloc[-1]
+    bb_pct = round((price - bb_lower) / (bb_upper - bb_lower), 3) if bb_upper != bb_lower else 0.5
+
     price_20d = df.iloc[-21]['close']
-    momentum = (price - price_20d) / price_20d * 100
+    momentum  = (price - price_20d) / price_20d * 100
     is_uptrend = price > ma20 > ma60
 
-    # 전일 거래량 vs 20일 평균 거래량
-    avg_volume = df['volume'].iloc[-21:-1].mean()
-    prev_volume = df['volume'].iloc[-2]
-    volume_ok = avg_volume > 0 and prev_volume >= avg_volume
+    # 볼린저 밴드 %B 과열 필터
+    bb_overbought = bb_pct > BB_PCT_MAX
 
+    # 전일 거래량 vs 20일 평균 거래량
+    avg_volume  = df['volume'].iloc[-21:-1].mean()
+    prev_volume = df['volume'].iloc[-2]
+    volume_ok   = avg_volume > 0 and prev_volume >= avg_volume
     volume_ratio = round(prev_volume / avg_volume, 2) if avg_volume > 0 else 0
-    detail = f'현재가 {price:,} | MA20 {int(ma20):,} | MA60 {int(ma60):,} | 거래량 {"✅" if volume_ok else "❌"}'
+
+    # ATR (변동성 기반 손절 임계값 결정용 데이터 수집)
+    atr = calc_atr(df)
+
+    # 일평균 거래대금 (외국인 Z-score 계산용 데이터 수집, 백만원 단위)
+    avg_tr_pbmn_mil = round(df['tr_pbmn'].iloc[-21:-1].mean() / 1_000_000, 1) if 'tr_pbmn' in df.columns else 0
+
+    detail = (f'현재가 {price:,} | MA20 {int(ma20):,} | MA60 {int(ma60):,} | '
+              f'거래량 {"✅" if volume_ok else "❌"} | BB%B {bb_pct:.2f}{"🔥과열" if bb_overbought else ""}')
     return {
         'momentum': round(momentum, 2),
         'is_uptrend': is_uptrend,
         'volume_ok': volume_ok,
+        'bb_pct': bb_pct,
+        'bb_overbought': bb_overbought,
         'volume_ratio': volume_ratio,
         'ma20': round(ma20, 0),
         'ma60': round(ma60, 0),
+        'atr': atr,
+        'avg_tr_pbmn_mil': avg_tr_pbmn_mil,
         'signal_price': int(price),
         'detail': detail,
     }
@@ -91,6 +112,8 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
                 print('  → 하락추세 제외')
             elif not result['volume_ok']:
                 print('  → 거래량 미달 제외')
+            elif result['bb_overbought']:
+                print(f'  → BB%B 과열({result["bb_pct"]:.2f}) 제외')
             else:
                 ok, frgn_total = is_foreign_buying(code)
                 label = f'{frgn_total:+,}백만원'
@@ -127,7 +150,11 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
                 'volume_ratio': result['volume_ratio'],
                 'foreign_5d_net_buy_mil': frgn_total,
                 'passed_all_filters': passed,
-                'selected': False,  # 아래에서 갱신
+                'selected': False,
+                # 데이터 수집 전용 — 향후 동적 임계값 결정용
+                'bb_pct': result['bb_pct'],
+                'atr': result['atr'],
+                'avg_tr_pbmn_mil': result['avg_tr_pbmn_mil'],
             })
 
         print()

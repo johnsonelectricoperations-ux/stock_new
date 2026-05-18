@@ -27,6 +27,9 @@ positions = {}
 # 실현 손익 누적 (복리 재투자 기준금 계산용)
 realized_pnl = 0
 
+# 오전 시장 추세 (비대칭 손절용 — morning_routine에서 갱신)
+_kospi_bullish: bool = True
+
 # 스케줄러 마지막 정상 동작 시각 (헬스체크용)
 _last_heartbeat: float = 0.0
 
@@ -100,9 +103,11 @@ def morning_routine():
     log_info('morning_routine', f'장 시작 루틴 실행 {now}')
 
     # 코스피 MA60 필터 — 하락장이면 매수 중단
+    global _kospi_bullish
     kospi_trend = True
     try:
         kospi_trend = check_market_trend()
+        _kospi_bullish = kospi_trend
         if not kospi_trend:
             send_message('⚠️ KOSPI 하락장 감지 (MA60 하향). 오늘 매수를 보류합니다.')
             log_warning('morning_routine', 'KOSPI 하락장 감지 — 매수 보류')
@@ -125,14 +130,13 @@ def morning_routine():
         if basis_data:
             log_basis(basis_data)
             if basis_data['basis'] is not None:
+                slope_str = f" slope {basis_data['basis_slope']:+.4f}" if basis_data.get('basis_slope') is not None else ''
                 log_info('morning_routine',
                          f"베이시스 {basis_data['basis']:+.2f}pt "
-                         f"(선물 {basis_data['futures']:,.2f} / 현물 {basis_data['spot']:,.0f}) "
-                         f"[{basis_data['futures_code']}]")
+                         f"(선물 {basis_data['futures']:,.2f} / 현물 {basis_data['spot']:,.0f}){slope_str}")
             else:
                 log_warning('morning_routine',
-                            f"현물 {basis_data['spot']:,.0f} 기록 완료 "
-                            f"— 선물({basis_data['futures_code']}) 수집 실패")
+                            f"현물 {basis_data['spot']:,.0f} 기록 완료 — 선물 수집 실패")
         else:
             log_warning('morning_routine', '베이시스 수집 실패 — KODEX 200 조회 불가')
     except Exception as e:
@@ -411,8 +415,9 @@ def monitor_positions():
                 positions[code]['break_even_set'] = True
                 positions[code]['floor_price'] = entry * (1 + BREAK_EVEN_FLOOR)
 
-            # ── 매도 트리거 계산
-            stop_loss_price  = entry * (1 - STOP_LOSS_RATE)
+            # ── 매도 트리거 계산 (비대칭 손절: 하락장 국면이면 손절 폭 타이트하게)
+            effective_stop_rate = STOP_LOSS_RATE * 0.6 if not _kospi_bullish else STOP_LOSS_RATE
+            stop_loss_price  = entry * (1 - effective_stop_rate)
             trail_stop_price = peak  * (1 - TRAIL_STOP_RATE)
             floor_price      = pos.get('floor_price', 0)
             sell_trigger     = max(stop_loss_price, trail_stop_price, floor_price)

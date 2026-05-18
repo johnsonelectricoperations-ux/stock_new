@@ -34,14 +34,28 @@ def get_daily_ohlcv(stock_code, days=120):
     for item in data[output_key]:
         if item.get('stck_clpr') and item['stck_clpr'] != '0':
             rows.append({
-                'date':   item['stck_bsop_date'],
-                'close':  int(item['stck_clpr']),
-                'volume': int(item.get('acml_vol', 0)),
+                'date':      item['stck_bsop_date'],
+                'close':     int(item['stck_clpr']),
+                'high':      int(item.get('stck_hgpr', item['stck_clpr'])),
+                'low':       int(item.get('stck_lwpr', item['stck_clpr'])),
+                'volume':    int(item.get('acml_vol', 0)),
+                'tr_pbmn':   int(item.get('acml_tr_pbmn', 0)),  # 거래대금 (원)
             })
 
     df = pd.DataFrame(rows)
     df = df.sort_values('date').reset_index(drop=True)
     return df
+
+
+def calc_atr(df: pd.DataFrame, period: int = 14) -> float:
+    """ATR(Average True Range) 계산 — 변동성 기반 동적 손절 임계값 결정용."""
+    prev_close = df['close'].shift(1)
+    tr = pd.concat([
+        df['high'] - df['low'],
+        (df['high'] - prev_close).abs(),
+        (df['low']  - prev_close).abs(),
+    ], axis=1).max(axis=1)
+    return round(tr.iloc[-period:].mean(), 0)
 
 
 def check_market_trend():

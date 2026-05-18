@@ -12,7 +12,7 @@ TIMING_LOG = 'timing_log.csv'
 FOLLOWUP_LOG = 'followup_log.csv'
 FOLLOWUP_PENDING = 'config/followup_pending.json'
 
-_BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct']
+_BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct', 'basis_slope']
 _TIMING_HEADERS = ['date', 'code', 'name', 'check_time', 'dip_met', 'action']
 
 _HEADERS = [
@@ -29,6 +29,8 @@ _SIGNAL_HEADERS = [
     'code', 'name', 'signal_price', 'momentum', 'is_uptrend',
     'ma20', 'ma60', 'volume_ratio',
     'foreign_5d_net_buy_mil', 'passed_all_filters', 'selected',
+    # 향후 동적 임계값 결정용 데이터
+    'bb_pct', 'atr', 'avg_tr_pbmn_mil',
 ]
 _FOLLOWUP_HEADERS = [
     'code', 'name', 'exit_date', 'exit_price', 'reason',
@@ -52,6 +54,7 @@ def log_basis(data: dict):
             data.get('futures') or '',
             data.get('basis') or '',
             data.get('basis_pct') or '',
+            data.get('basis_slope') or '',
         ])
 
 
@@ -87,6 +90,7 @@ def log_signal_scan(scan_records: list):
                 r.get('ma20', ''), r.get('ma60', ''), r.get('volume_ratio', ''),
                 r.get('foreign_5d_net_buy_mil', ''),
                 r['passed_all_filters'], r['selected'],
+                r.get('bb_pct', ''), r.get('atr', ''), r.get('avg_tr_pbmn_mil', ''),
             ])
 
 
