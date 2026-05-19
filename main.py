@@ -155,7 +155,7 @@ def morning_routine():
         return
 
     try:
-        signals = get_leading_sector_signals(top_sectors=3, max_stocks=new_slots, save_log=True)
+        signals = get_leading_sector_signals(top_sectors=5, max_stocks=new_slots, save_log=True)
     except Exception as e:
         log_error('morning_routine:get_leading_sector_signals', e, critical=True)
         send_message(f'⚠️ 신호 생성 실패: {e}')
