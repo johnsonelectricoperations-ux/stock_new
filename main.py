@@ -663,7 +663,7 @@ def _build_daily_check() -> str:
 
 def _heartbeat_watchdog():
     """스케줄러 스레드가 멈췄는지 30분 주기로 감시 (장 중에만 동작)."""
-    WATCHDOG_TIMEOUT = 1800  # 30분
+    WATCHDOG_TIMEOUT = 5400  # 90분 (08:00 스캔 시작 → 09:15 진입까지 75분 소요)
     while True:
         time.sleep(WATCHDOG_TIMEOUT)
         if not is_market_open():
