@@ -5,6 +5,7 @@ from kis_foreign import is_foreign_buying
 from naver_theme import get_top_themes
 
 BB_PCT_MAX = 0.85   # 볼린저 밴드 %B 상단 임계값 — 초과 시 과열 종목 제외
+MIN_THEME_MOMENTUM = 15.0  # 테마 평균 모멘텀 최소 임계값 — 미달 테마 제외
 
 
 def _analyze_stock(code: str) -> dict | None:
@@ -87,9 +88,12 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
         theme_scores.append((theme_name, round(avg_momentum, 2)))
         theme_stock_data[theme_name] = stock_results
 
-    # 모멘텀 상위 top_sectors개 테마 선정
+    # 모멘텀 상위 top_sectors개 테마 선정 (최소 임계값 미달 테마 제외)
     theme_scores.sort(key=lambda x: -x[1])
-    top_names = {t[0] for t in theme_scores[:top_sectors]}
+    qualified = [t for t in theme_scores if t[1] >= MIN_THEME_MOMENTUM]
+    if not qualified:
+        print(f'[테마] 평균 모멘텀 {MIN_THEME_MOMENTUM}% 이상 테마 없음 — 오늘 매수 없음')
+    top_names = {t[0] for t in qualified[:top_sectors]}
 
     candidates = []  # 모든 필터 통과 종목 풀
     scan_records = []
