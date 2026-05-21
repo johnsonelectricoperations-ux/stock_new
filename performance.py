@@ -79,6 +79,17 @@ def log_timing(code: str, name: str, dip_met: bool, action: str):
 def log_signal_scan(scan_records: list):
     """매일 신호 스캔 결과 전체를 signal_log.csv에 기록."""
     exists = os.path.exists(SIGNAL_LOG)
+    # 헤더 불일치 감지: 구버전 헤더면 새 헤더로 교체 (기존 데이터 행은 유지)
+    if exists:
+        with open(SIGNAL_LOG, 'r', encoding='utf-8') as f:
+            first_line = f.readline().strip()
+        expected = ','.join(_SIGNAL_HEADERS)
+        if first_line != expected:
+            with open(SIGNAL_LOG, 'r', encoding='utf-8') as f:
+                all_lines = f.readlines()
+            with open(SIGNAL_LOG, 'w', encoding='utf-8', newline='') as f:
+                f.write(expected + '\n')
+                f.writelines(all_lines[1:])
     with open(SIGNAL_LOG, 'a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         if not exists:

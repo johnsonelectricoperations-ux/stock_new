@@ -25,21 +25,28 @@ def _get_kospi200_spot() -> float | None:
 
 def _get_vkospi() -> float | None:
     """네이버 polling API로 VKOSPI(한국 변동성 지수) 조회 — 국면 판단 보조 지표.
-    장 외 시간에는 None 반환 (datas 빈 배열).
+    장 외 시간에는 None 반환 (datas 빈 배열). 장 개시 직후 간헐적 지연 대비 3회 재시도.
     """
+    import time as _time
     url = 'https://polling.finance.naver.com/api/realtime/domestic/index/VKOSPI'
-    try:
-        res = requests.get(url, headers=_HEADERS, timeout=10)
-        res.raise_for_status()
-        datas = res.json().get('datas', [])
-        if not datas:
-            return None
-        item = datas[0]
-        price_str = item.get('closePrice') or item.get('currentPrice', '')
-        val = float(str(price_str).replace(',', ''))
-        return val if val > 0 else None
-    except Exception:
-        return None
+    for attempt in range(3):
+        try:
+            res = requests.get(url, headers=_HEADERS, timeout=10)
+            res.raise_for_status()
+            datas = res.json().get('datas', [])
+            if not datas:
+                if attempt < 2:
+                    _time.sleep(3)
+                    continue
+                return None
+            item = datas[0]
+            price_str = item.get('closePrice') or item.get('currentPrice', '')
+            val = float(str(price_str).replace(',', ''))
+            return val if val > 0 else None
+        except Exception:
+            if attempt < 2:
+                _time.sleep(3)
+    return None
 
 
 def _get_kospi200_futures() -> float | None:
