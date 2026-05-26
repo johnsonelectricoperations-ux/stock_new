@@ -1,5 +1,46 @@
 # 한국 주식 자동매매 시스템 — 컨텍스트 노트
 
+---
+
+## 최근 세션 요약 (2026-05-26 마지막 업데이트)
+
+### 현재 시스템 상태
+- 모의투자 운영 중 (2026-05-12 시작)
+- 누적 실현손익: +1,123,832원 (+11.2%), 거래 10건
+- EC2 서비스 정상 실행 중 (`systemd stock-bot.service`)
+- 코드 브랜치: `claude/file-modifications-main-ykk5n`
+
+### 오늘 완료한 작업 (2026-05-26)
+1. **signal_log 헤더 불일치 수정** — passed_all_filters/selected가 0으로 오보되던 문제. `/check` BB%B ❌, ATR ❌ 도 동일 원인. `log_signal_scan()`에 헤더 자동교체 로직 추가 + EC2 헤더 직접 교체.
+2. **VKOSPI 수집 구현** — Naver/pykrx/FinanceDataReader 모두 실패 → KRX OpenAPI(`data-dbg.krx.co.kr`) 파생상품지수 시세정보 API로 해결. EC2 systemd override.conf에 `KRX_API_KEY` 등록 완료.
+3. **basis_log 정리** — 헤더에 basis_slope/vkospi 누락 교체, 05-15/05-18 오염 데이터 제거, 05-19~05-22 VKOSPI 소급 수집 완료.
+
+### 내일 확인 사항
+- `/check` 결과에서 VKOSPI ✅ 확인 (오늘치 05-26은 내일 자동 수집)
+- basis_log 05-26 VKOSPI 채워졌는지 확인
+
+### 데이터 수집 현황 (2026-05-26 기준)
+| 파일 | 상태 |
+|------|------|
+| signal_log.csv | 10일치 162건, 헤더 18열 정상 |
+| basis_log.csv | 5일치 (05-19~05-26), VKOSPI 05-26만 미수집 |
+| trades.csv | 10건 (LG전자/LS 2건 확장 필드 누락 — 구버전) |
+| timing_log.csv | 103건 정상 |
+| followup_pending.json | 9건 추적 중, d10 이상부터 followup_log.csv 생성 예정 |
+
+### EC2 환경 주요 설정
+- venv 경로: `/home/ubuntu/stock-bot/venv/bin/python3`
+- 서비스 파일: `/etc/systemd/system/stock-bot.service`
+- override: `/etc/systemd/system/stock-bot.service.d/override.conf` (KRX_API_KEY 등록)
+- 코드 경로: `/home/ubuntu/stock-bot/`
+
+### 다음 세션 할 일
+- 특별한 이슈 없으면 매일 `/check` 결과로 정상 여부만 확인
+- 거래 30건 달성 후 `analysis_plan.md` 기준으로 파라미터 검증 시작
+- 실전 전환 조건 (승률 45%+, 손익비 1.5+, 14일 무에러) 자동 알림 대기
+
+---
+
 ## 프로젝트 개요
 
 코스피 대형주 위주로 네이버 증권 테마 크롤링 + 외국인 매매 동향을 참고하여 여러 종목을 자동으로 매매하는 시스템.
