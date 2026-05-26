@@ -172,6 +172,10 @@
 - **사후 추적 (followup_log.csv)**: 매도 후 3/5/10/20일 가격을 자동 기록. 손절이 너무 빨랐는지, 트레일링이 적절했는지 분석용.
 - **베이시스 수집 (basis_log.csv)**: 매일 09:15 KOSPI 200 베이시스(선물-현물)를 네이버에서 스크래핑 후 기록. 매매 조건으로는 미사용, 데이터 축적 후 임계값 결정 예정.
 - **타이밍 로그 (timing_log.csv)**: 매수 윈도우(09:15~09:30) 매 분 체크 결과 기록. 눌림목 조건 효과 및 최적 진입 시간 분석용.
+- **signal_log 헤더 불일치 수정 (2026-05-26)**: signal_price 컬럼이 나중에 추가되면서 기존 CSV 헤더가 구버전(11열)으로 남아 있었음. DictReader가 위치 기반으로 매핑하므로 passed_all_filters가 ma20 값을 읽어 필터통과 0, 선정 0으로 오보. log_signal_scan()에 헤더 불일치 자동 감지/교체 로직 추가.
+- **VKOSPI 수집 방식 확정 (2026-05-26)**: Naver polling API(장 중 포함 datas=[] 반환), pykrx 1.2.8(KRX 로그인 필수로 변경), FinanceDataReader(Yahoo Finance 미지원), fchart/sise_index(JS 렌더링) 모두 미지원 확인. KRX OpenAPI(data-dbg.krx.co.kr) 파생상품지수 시세정보 API로 해결. AUTH_KEY 헤더 + JSON POST 방식. '코스피 200 변동성지수' 항목 종가 추출. KRX_API_KEY 환경변수를 systemd override.conf에 등록.
+- **워치독 타임아웃 90분 (2026-05-26 이전)**: 5테마 스캔이 30분+ 소요되어 morning_routine 블로킹 중 heartbeat 미갱신 → 오경보 발생. WATCHDOG_TIMEOUT 1800 → 5400(90분)으로 수정.
+- **백테스팅 한계**: 네이버 테마 과거 랭킹 데이터가 없어 완전한 백테스트 불가. 가격 기반 필터(BB%B, MA, ATR)만 부분 백테스트 가능. 핵심 알파인 테마 선정 로직은 실제 모의투자 데이터로만 검증 가능.
 
 ---
 

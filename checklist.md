@@ -8,6 +8,7 @@
 - [x] 텔레그램 봇 생성 (BotFather) 및 토큰 발급
 - [x] 텔레그램 Chat ID 확인
 - [x] AWS 서버 SSH 접속 확인
+- [x] KRX OpenAPI 가입 및 파생상품지수 시세정보 API 신청 (2026-05-26)
 
 ### 완료된 설정
 - [x] Python 가상환경 구성 (venv)
@@ -116,7 +117,7 @@
 - [x] 주말/공휴일 처리 (2026년 공휴일 목록 적용)
 - [x] 장 외 시간 모니터링 제외
 - [x] systemd 백그라운드 실행 (서버 재시작 시 자동 시작)
-- [x] 스케줄러 헬스체크 (워치독 스레드 — 30분 무응답 시 텔레그램 알림)
+- [x] 스케줄러 헬스체크 (워치독 스레드 — 90분 무응답 시 텔레그램 알림, 5테마 스캔 소요시간 대응)
 
 ---
 
@@ -126,6 +127,7 @@
   - [x] 분석용 확장 필드: entry_time, exit_time, peak_price, min_price, trigger_price, momentum, foreign_net_buy_mil, ma20/ma60_at_entry, volume_ratio, kospi_trend, dip_entry_used
 - [x] 매일 신호 스캔 전 종목 기록 (`signal_log.csv`) — 임계값 튜닝용
   - [x] 확장 필드: signal_price, ma20, ma60, volume_ratio, bb_pct, atr, avg_tr_pbmn_mil
+  - [x] 헤더 불일치 자동 감지/교체 로직 추가 (구버전 헤더로 인한 /check 오보 수정)
 - [x] 매도 후 사후 추적 기록 (`followup_log.csv`) — 3/5/10/20일 후 가격 자동 수집
 - [x] 매일 KOSPI 200 베이시스 기록 (`basis_log.csv`) — 임계값 결정용
   - [x] 확장 필드: basis_slope (전일 대비 변화량), vkospi (한국 변동성 지수)
@@ -155,7 +157,10 @@
 - [x] 잔고 조회 API 정상 동작 확인 — kis_balance.py (포트 29443 수정 후)
 - [x] 데이터 수집 CSV 정상 기록 확인 — trades.csv, signal_log.csv, timing_log.csv, followup_pending.json
 - [x] 베이시스 수집 정상화 — 네이버 모바일 API(m.stock.naver.com/api/index/FUT/basic)로 선물 가격 수집 (2026-05-18)
-- [x] VKOSPI 수집 정상화 — 네이버 polling API(polling.finance.naver.com/api/realtime/domestic/index/VKOSPI) 사용, 장 외 시간 None 반환 정상 (2026-05-18)
+- [x] VKOSPI 수집 정상화 — KRX OpenAPI(data-dbg.krx.co.kr) 파생상품지수 시세정보 연동 (2026-05-26)
+  - 네이버 polling API / pykrx / FinanceDataReader 모두 미지원 확인 후 KRX OpenAPI로 교체
+  - '코스피 200 변동성지수' 항목 전일 종가 수집, KRX_API_KEY 환경변수 필요
+  - systemd override.conf에 Environment=KRX_API_KEY 등록
 - [x] `/check` 명령어 및 15:35 리포트에 시스템 동작 검증 요약 추가 (베이시스/VKOSPI 기록, 신호 스캔, 거래, 에러 4항목)
 - [ ] 외국인 순매수 필터 효과 검증
 - [ ] 에러 로그 수집 및 안정성 확인 (2주 이상 무중단 목표)
