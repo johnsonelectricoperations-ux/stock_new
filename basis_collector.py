@@ -24,18 +24,10 @@ def _get_kospi200_spot() -> float | None:
 
 
 def _get_vkospi() -> float | None:
-    """FinanceDataReader로 VKOSPI(한국 변동성 지수) 전일 종가 조회 — 국면 판단 보조 지표.
-    실시간 불필요 (변동성 국면 판단 용도이므로 전일 종가로 충분).
+    """VKOSPI(한국 변동성 지수) 조회.
+    Naver polling API / pykrx / FinanceDataReader 모두 미지원 확인 (2026-05).
+    KRX OpenAPI 가입 후 구현 예정 — analysis_plan.md 8번 항목(3개월 이상 후 분석용).
     """
-    try:
-        import FinanceDataReader as fdr
-        from_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-        df = fdr.DataReader('VKOSPI', start=from_date)
-        if df is not None and not df.empty:
-            val = float(df['Close'].iloc[-1])
-            return val if val > 0 else None
-    except Exception:
-        pass
     return None
 
 
