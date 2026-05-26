@@ -24,18 +24,15 @@ def _get_kospi200_spot() -> float | None:
 
 
 def _get_vkospi() -> float | None:
-    """pykrx로 VKOSPI(한국 변동성 지수) 전일 종가 조회 — 국면 판단 보조 지표.
+    """FinanceDataReader로 VKOSPI(한국 변동성 지수) 전일 종가 조회 — 국면 판단 보조 지표.
     실시간 불필요 (변동성 국면 판단 용도이므로 전일 종가로 충분).
     """
     try:
-        from pykrx import stock as _stock
-        today = datetime.now()
-        # 최근 5 거래일 범위로 조회해 가장 최신 데이터 사용
-        from_date = (today - timedelta(days=7)).strftime('%Y%m%d')
-        to_date = today.strftime('%Y%m%d')
-        df = _stock.get_index_ohlcv_by_date(from_date, to_date, 'VKOSPI')
+        import FinanceDataReader as fdr
+        from_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+        df = fdr.DataReader('VKOSPI', start=from_date)
         if df is not None and not df.empty:
-            val = float(df['종가'].iloc[-1])
+            val = float(df['Close'].iloc[-1])
             return val if val > 0 else None
     except Exception:
         pass
