@@ -24,10 +24,28 @@ def _get_kospi200_spot() -> float | None:
 
 
 def _get_vkospi() -> float | None:
-    """VKOSPI(한국 변동성 지수) 조회.
-    Naver polling API / pykrx / FinanceDataReader 모두 미지원 확인 (2026-05).
-    KRX OpenAPI 가입 후 구현 예정 — analysis_plan.md 8번 항목(3개월 이상 후 분석용).
-    """
+    """KRX OpenAPI로 '코스피 200 변동성지수'(VKOSPI) 전일 종가 조회."""
+    api_key = os.environ.get('KRX_API_KEY')
+    if not api_key:
+        return None
+    try:
+        # 최근 7일 내 가장 최신 거래일 데이터 탐색
+        for days_back in range(1, 8):
+            date = (datetime.now() - timedelta(days=days_back)).strftime('%Y%m%d')
+            res = requests.post(
+                'https://data-dbg.krx.co.kr/svc/apis/idx/drvprod_dd_trd',
+                json={'basDd': date},
+                headers={'AUTH_KEY': api_key, 'Content-Type': 'application/json'},
+                timeout=10,
+            )
+            res.raise_for_status()
+            items = res.json().get('OutBlock_1', [])
+            for item in items:
+                if '변동성지수' in item.get('IDX_NM', ''):
+                    val = float(item['CLSPRC_IDX'].replace(',', ''))
+                    return val if val > 0 else None
+    except Exception:
+        pass
     return None
 
 
