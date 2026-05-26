@@ -24,28 +24,21 @@ def _get_kospi200_spot() -> float | None:
 
 
 def _get_vkospi() -> float | None:
-    """네이버 polling API로 VKOSPI(한국 변동성 지수) 조회 — 국면 판단 보조 지표.
-    장 외 시간에는 None 반환 (datas 빈 배열). 장 개시 직후 간헐적 지연 대비 3회 재시도.
+    """pykrx로 VKOSPI(한국 변동성 지수) 전일 종가 조회 — 국면 판단 보조 지표.
+    실시간 불필요 (변동성 국면 판단 용도이므로 전일 종가로 충분).
     """
-    import time as _time
-    url = 'https://polling.finance.naver.com/api/realtime/domestic/index/VKOSPI'
-    for attempt in range(3):
-        try:
-            res = requests.get(url, headers=_HEADERS, timeout=10)
-            res.raise_for_status()
-            datas = res.json().get('datas', [])
-            if not datas:
-                if attempt < 2:
-                    _time.sleep(3)
-                    continue
-                return None
-            item = datas[0]
-            price_str = item.get('closePrice') or item.get('currentPrice', '')
-            val = float(str(price_str).replace(',', ''))
+    try:
+        from pykrx import stock as _stock
+        today = datetime.now()
+        # 최근 5 거래일 범위로 조회해 가장 최신 데이터 사용
+        from_date = (today - timedelta(days=7)).strftime('%Y%m%d')
+        to_date = today.strftime('%Y%m%d')
+        df = _stock.get_index_ohlcv_by_date(from_date, to_date, 'VKOSPI')
+        if df is not None and not df.empty:
+            val = float(df['종가'].iloc[-1])
             return val if val > 0 else None
-        except Exception:
-            if attempt < 2:
-                _time.sleep(3)
+    except Exception:
+        pass
     return None
 
 
