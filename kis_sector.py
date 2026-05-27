@@ -4,7 +4,7 @@ from kis_indicator import get_daily_ohlcv, calc_atr
 from kis_foreign import is_foreign_buying
 from naver_theme import get_top_themes
 
-BB_PCT_MAX = 0.85   # 볼린저 밴드 %B 상단 임계값 — 초과 시 과열 종목 제외
+BB_PCT_MAX = 0.95   # 볼린저 밴드 %B 상단 임계값 — 초과 시 과열 종목 제외
 MIN_THEME_MOMENTUM = 15.0  # 테마 평균 모멘텀 최소 임계값 — 미달 테마 제외
 
 
