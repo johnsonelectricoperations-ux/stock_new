@@ -16,6 +16,7 @@ from config.settings import (
     BREAK_EVEN_TRIGGER, BREAK_EVEN_FLOOR,
     PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
     EMERGENCY_STOP_RATE, MOMENTUM_EXIT_RATE,
+    KIS_IS_MOCK, SELL_TAX_RATE, COMMISSION_RATE,
 )
 from performance import log_trade, add_followup_pending, log_basis, log_timing
 from basis_collector import get_basis
@@ -319,8 +320,15 @@ def _do_sell(code: str, qty: int, price: int, reason: str, trigger_price: int = 
     """매도 실행 + PnL/로그/텔레그램 처리."""
     pos = positions[code]
     entry = pos['entry_price']
-    profit = (price - entry) * qty
-    profit_rate = (price - entry) / entry * 100
+    gross_profit = (price - entry) * qty
+    # 실전 거래 비용 반영 (모의투자는 체결가 그대로이므로 미적용)
+    if not KIS_IS_MOCK:
+        cost = (entry * qty * COMMISSION_RATE
+                + price * qty * (COMMISSION_RATE + SELL_TAX_RATE))
+        profit = int(gross_profit - cost)
+    else:
+        profit = gross_profit
+    profit_rate = profit / (entry * qty) * 100
     sell_stock(code, qty)
     add_realized_pnl(profit)
     now = datetime.now()
