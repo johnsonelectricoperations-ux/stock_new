@@ -4,7 +4,8 @@ from kis_indicator import get_daily_ohlcv, calc_atr
 from kis_foreign import is_foreign_buying
 from naver_theme import get_top_themes
 
-BB_PCT_MAX = 0.95   # 볼린저 밴드 %B 상단 임계값 — 초과 시 과열 종목 제외
+BB_PCT_MAX = 0.95   # 볼린저 밴드 %B 하드컷 — 초과 시 과열 종목 제외
+BB_PCT_PREFER = 0.85  # 선정 우선순위 분기점 — 이하(눌림목/정상)를 모멘텀 순으로 먼저 선정
 MIN_THEME_MOMENTUM = 15.0  # 테마 평균 모멘텀 최소 임계값 — 미달 테마 제외
 
 
@@ -131,6 +132,7 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
                         'code': code,
                         'name': name,
                         'momentum': result['momentum'],
+                        'bb_pct': result['bb_pct'],
                         'ma20': result['ma20'],
                         'ma60': result['ma60'],
                         'volume_ratio': result['volume_ratio'],
@@ -163,8 +165,9 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
 
         print()
 
-    # 전체 후보 중 모멘텀 상위 max_stocks개 최종 선정
-    candidates.sort(key=lambda x: -x['momentum'])
+    # 최종 선정: 눌림목/정상(BB%B ≤ 0.85) 우선, 그 안에서 모멘텀 순
+    # 과열 근접(0.85~0.95) 종목은 정상 종목으로 슬롯이 안 찰 때만 보충 선정
+    candidates.sort(key=lambda x: (x['bb_pct'] > BB_PCT_PREFER, -x['momentum']))
     signals = candidates[:max_stocks]
 
     # scan_records selected 플래그 갱신
