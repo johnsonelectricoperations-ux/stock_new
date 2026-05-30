@@ -230,6 +230,31 @@ print(f'VKOSPI 정상 구간 진입 평균 수익률: {no_spike:.2f}%')
 
 ---
 
+## 9. 전날 섹터 모멘텀 과열 여부 (거래 30건 이상 후)
+
+08:00 크롤링은 전일 종가 기준이라 "전날 주도섹터"를 잡음. 전날 급등(과열)
+섹터를 추격 매수하면 차익실현 갭하락에 노출되는지 확인. (5/20 지능형로봇
+8.5% 테마 손실 사례 검증)
+
+```python
+# 선정된 종목의 전날 섹터 모멘텀(sector_avg_momentum)과 수익률 관계
+sel = signals[signals['selected'] == True]
+m = pd.merge(trades, sel[['code', 'date', 'sector_avg_momentum']],
+             left_on=['code', 'entry_date'], right_on=['code', 'date'], how='left')
+m['sector_mom'] = m['sector_avg_momentum'].astype(float)
+
+# 섹터 모멘텀 구간별 평균 수익률
+m['sec_bin'] = pd.cut(m['sector_mom'], bins=[0, 15, 25, 40, 999])
+print(m.groupby('sec_bin')['profit_rate'].agg(['mean', 'count']))
+```
+
+**판단 기준.**
+- 섹터 모멘텀 과열 구간(예: 40%+)에서 수익률이 의미있게 낮음 → 섹터 모멘텀
+  상한선 추가 (`kis_sector.py` MIN_THEME_MOMENTUM 옆에 MAX 추가)
+- 차이 없거나 높을수록 좋음 → 현행 유지 (모멘텀 지속성 우세)
+
+---
+
 ## 검증 후 액션 플랜
 
 | 검증 결과 | 액션 |
@@ -241,3 +266,4 @@ print(f'VKOSPI 정상 구간 진입 평균 수익률: {no_spike:.2f}%')
 | MSM 필요 | 별도 `regime_detector.py` 구현 검토 |
 | slope 임계값 확정 | `morning_routine()` basis_slope 조건 추가 |
 | VKOSPI 필터 유효 | `morning_routine()` vkospi 조건 추가 |
+| 섹터 과열 악영향 | `kis_sector.py` 섹터 모멘텀 상한선 추가 |
