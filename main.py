@@ -60,8 +60,13 @@ def get_invested_capital() -> int:
 
 
 def get_available_cash() -> int:
-    """실제 매수 가능한 가용 현금 (보유 포지션 투자금 차감)."""
-    return max(0, TOTAL_BUDGET + realized_pnl - get_invested_capital())
+    """실제 매수 가능한 가용 현금 — KIS 예수금 우선, 실패 시 메모리 계산 폴백."""
+    try:
+        from kis_balance import get_balance
+        bal = get_balance()
+        return bal['cash']
+    except Exception:
+        return max(0, TOTAL_BUDGET + realized_pnl - get_invested_capital())
 
 
 def get_effective_budget() -> int:
