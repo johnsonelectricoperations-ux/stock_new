@@ -23,6 +23,7 @@ _HEADERS = [
     'momentum', 'foreign_net_buy_mil',
     'ma20_at_entry', 'ma60_at_entry', 'volume_ratio',
     'kospi_trend', 'dip_entry_used',
+    'atr_at_entry', 'bb_pct_at_entry', 'avg_tr_pbmn_mil', 'is_mock',
 ]
 _SIGNAL_HEADERS = [
     'date', 'sector', 'sector_rank', 'sector_avg_momentum',
@@ -111,7 +112,9 @@ def log_trade(code, name, sector, entry_date, entry_time, entry_price,
               peak_price=None, min_price=None, trigger_price=None,
               momentum=None, foreign_net_buy_mil=None,
               ma20_at_entry=None, ma60_at_entry=None, volume_ratio=None,
-              kospi_trend=None, dip_entry_used=None):
+              kospi_trend=None, dip_entry_used=None,
+              atr_at_entry=None, bb_pct_at_entry=None, avg_tr_pbmn_mil=None):
+    from config.settings import KIS_IS_MOCK
     exists = os.path.exists(TRADE_LOG)
     exit_date = datetime.now().strftime('%Y-%m-%d')
     exit_time = datetime.now().strftime('%H:%M:%S')
@@ -134,6 +137,7 @@ def log_trade(code, name, sector, entry_date, entry_time, entry_price,
             momentum, foreign_net_buy_mil,
             ma20_at_entry, ma60_at_entry, volume_ratio,
             kospi_trend, dip_entry_used,
+            atr_at_entry, bb_pct_at_entry, avg_tr_pbmn_mil, KIS_IS_MOCK,
         ])
 
 

@@ -133,6 +133,8 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
                         'name': name,
                         'momentum': result['momentum'],
                         'bb_pct': result['bb_pct'],
+                        'atr': result['atr'],
+                        'avg_tr_pbmn_mil': result['avg_tr_pbmn_mil'],
                         'ma20': result['ma20'],
                         'ma60': result['ma60'],
                         'volume_ratio': result['volume_ratio'],

@@ -302,7 +302,9 @@ def _execute_buy(s: dict, available_cash: int, total_signals: int,
         'volume_ratio': s.get('volume_ratio'),
         'kospi_trend': kospi_trend,
         'dip_entry_used': dip_entry_used,
-        'atr': s.get('atr'),   # ATR 기반 동적 트레일링용
+        'atr': s.get('atr'),
+        'bb_pct_at_entry': s.get('bb_pct'),
+        'avg_tr_pbmn_mil': s.get('avg_tr_pbmn_mil'),
     }
     log_info('morning_routine', f"매수 체결: {s['name']}({code}) {info['price']:,}원 × {qty}주")
     return (
@@ -355,6 +357,9 @@ def _do_sell(code: str, qty: int, price: int, reason: str, trigger_price: int = 
         volume_ratio=pos.get('volume_ratio'),
         kospi_trend=pos.get('kospi_trend'),
         dip_entry_used=pos.get('dip_entry_used'),
+        atr_at_entry=pos.get('atr'),
+        bb_pct_at_entry=pos.get('bb_pct_at_entry'),
+        avg_tr_pbmn_mil=pos.get('avg_tr_pbmn_mil'),
     )
     add_followup_pending(code, pos['name'], exit_date, price, reason)
     log_info('sell', f"{pos['name']}({code}) {reason} {price:,}원 수익률 {profit_rate:+.2f}%")
