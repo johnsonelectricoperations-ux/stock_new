@@ -2,31 +2,33 @@
 
 ---
 
-## 최근 세션 요약 (2026-05-26 마지막 업데이트)
+## 최근 세션 요약 (2026-06-09 마지막 업데이트)
 
 ### 현재 시스템 상태
 - 모의투자 운영 중 (2026-05-12 시작)
-- 누적 실현손익: +1,123,832원 (+11.2%), 거래 10건
+- 누적 실현손익: +1,326,958원, 거래 18건
 - EC2 서비스 정상 실행 중 (`systemd stock-bot.service`)
-- 코드 브랜치: `claude/file-modifications-main-ykk5n`
+- 코드 브랜치: `claude/sleepy-heisenberg-8hximg`
 
-### 오늘 완료한 작업 (2026-05-26)
-1. **signal_log 헤더 불일치 수정** — passed_all_filters/selected가 0으로 오보되던 문제. `/check` BB%B ❌, ATR ❌ 도 동일 원인. `log_signal_scan()`에 헤더 자동교체 로직 추가 + EC2 헤더 직접 교체.
-2. **VKOSPI 수집 구현** — Naver/pykrx/FinanceDataReader 모두 실패 → KRX OpenAPI(`data-dbg.krx.co.kr`) 파생상품지수 시세정보 API로 해결. EC2 systemd override.conf에 `KRX_API_KEY` 등록 완료.
-3. **basis_log 정리** — 헤더에 basis_slope/vkospi 누락 교체, 05-15/05-18 오염 데이터 제거, 05-19~05-22 VKOSPI 소급 수집 완료.
+### 오늘 완료한 작업 (2026-06-09)
+1. **KIS_BASE_URL 포트 수정** — 모의투자 조회 API(`inquire-price` 등)가 `9443` 포트에서 500 오류 반환. 원인은 모의투자 서버(openapivts)의 조회/주문 API 모두 `29443` 포트 사용. `config/settings.py`의 `KIS_BASE_URL`을 `9443` → `29443`으로 수정. `real_trading_transition.md` 섹션 5의 포트 표가 구버전이었음 (조회도 29443 사용으로 확인됨).
+2. **데이터 수집 전체 점검** — 모든 CSV 파일 정상 수집 중 확인. basis_log 공백 없음 (첫/마지막 행만 보고 착각).
 
-### 내일 확인 사항
-- `/check` 결과에서 VKOSPI ✅ 확인 (오늘치 05-26은 내일 자동 수집)
-- basis_log 05-26 VKOSPI 채워졌는지 확인
+### 현재 시장 환경 (2026-06-09 기준)
+- 어제 및 지난주말 폭락장 발생
+- VKOSPI **76.63** (극도 고변동성, 정상 10~35)
+- 베이시스 **-13.5pt (-1.04%)** (심각한 백워데이션, 임계값 -0.3% 대비 3배 초과)
+- 최근 거래 연속 손절 중 — 폭락장 데이터 수집 진행 중
 
-### 데이터 수집 현황 (2026-05-26 기준)
-| 파일 | 상태 |
-|------|------|
-| signal_log.csv | 10일치 162건, 헤더 18열 정상 |
-| basis_log.csv | 5일치 (05-19~05-26), VKOSPI 05-26만 미수집 |
-| trades.csv | 10건 (LG전자/LS 2건 확장 필드 누락 — 구버전) |
-| timing_log.csv | 103건 정상 |
-| followup_pending.json | 9건 추적 중, d10 이상부터 followup_log.csv 생성 예정 |
+### 데이터 수집 현황 (2026-06-09 기준)
+| 파일 | 현황 | 비고 |
+|------|------|------|
+| trades.csv | 18건 | 목표 30건까지 약 2~3주 |
+| signal_log.csv | 338건 | 정상 |
+| basis_log.csv | 13거래일 (05-19~06-05) | 정상 연속 수집 중 |
+| timing_log.csv | 257건 | 정상 |
+| followup_pending.json | 17건 추적 중 | d20 완료 시 followup_log.csv 생성 |
+| followup_log.csv | 미생성 | 정상 — d20 완료 종목 없음 (6/16 첫 완료 예정) |
 
 ### EC2 환경 주요 설정
 - venv 경로: `/home/ubuntu/stock-bot/venv/bin/python3`
@@ -36,8 +38,16 @@
 
 ### 다음 세션 할 일
 - 특별한 이슈 없으면 매일 `/check` 결과로 정상 여부만 확인
-- 거래 30건 달성 후 `analysis_plan.md` 기준으로 파라미터 검증 시작
-- 실전 전환 조건 (승률 45%+, 손익비 1.5+, 14일 무에러) 자동 알림 대기
+- **거래 30건 도달 시** → `analysis_plan.md` 기준으로 파라미터 검증 시작
+- **6/16** → followup d20 첫 완료 (5/18 레이저쎌 매도분)
+- **basis_log 40일 도달 시 (약 7월 초)** → 베이시스/slope 임계값 결정 후 `morning_routine()` 필터 추가
+- **basis_log 60일 도달 시 (약 8월 중순)** → VKOSPI MA60 필터 결정 후 추가
+- 데이터 충분 후 `real_trading_transition.md` 미완료 항목 순서대로 실전 전환 준비
+
+### 방침
+- 모의투자 중이므로 **시스템 수정 없이 데이터 축적 우선**
+- 폭락장 포함 다양한 시장 상황 데이터가 쌓여야 파라미터 튜닝 의미 있음
+- 베이시스/VKOSPI 필터는 데이터 기반으로 임계값 결정 후 추가 예정
 
 ---
 

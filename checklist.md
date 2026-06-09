@@ -162,8 +162,14 @@
   - '코스피 200 변동성지수' 항목 전일 종가 수집, KRX_API_KEY 환경변수 필요
   - systemd override.conf에 Environment=KRX_API_KEY 등록
 - [x] `/check` 명령어 및 15:35 리포트에 시스템 동작 검증 요약 추가 (베이시스/VKOSPI 기록, 신호 스캔, 거래, 에러 4항목)
+- [x] KIS_BASE_URL 포트 수정 — 모의투자 조회 API도 29443 사용 확인, 9443 → 29443 수정 (2026-06-09)
+- [x] 전체 데이터 수집 현황 점검 — 모든 파일 정상 수집 중 확인 (2026-06-09)
+- [ ] 거래 30건 달성 (현재 18건) → analysis_plan.md 파라미터 검증 시작
+- [ ] followup_log.csv 첫 생성 확인 (6/16 이후, 5/18 매도분 d20 완료 시)
 - [ ] 외국인 순매수 필터 효과 검증
 - [ ] 에러 로그 수집 및 안정성 확인 (2주 이상 무중단 목표)
+- [ ] basis_log 40일 도달 후 베이시스/slope 임계값 결정 및 morning_routine 필터 추가 (약 7월 초)
+- [ ] basis_log 60일 도달 후 VKOSPI MA60 필터 결정 및 추가 (약 8월 중순)
 - [ ] 임계값 파라미터 튜닝 (FOREIGN_BUY_THRESHOLD, MOMENTUM_EXIT_RATE)
 - [ ] 실전 투자 전환 체크리스트 확인
 
