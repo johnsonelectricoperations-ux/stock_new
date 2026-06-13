@@ -20,6 +20,13 @@
 
 ## 기록
 
+### 2026-06-13 (Claude 세션) — 새 세션 온보딩 절차 문서화
+
+새 Claude 세션이 다른 브랜치에서 시작해도 서버 배포·데이터 수신이 끊기지 않도록 정비.
+- OPERATION.md에 "0. 새 세션/새 브랜치 시작 시" 섹션 추가 (Claude·사용자 각각 할 일, 운영 파일 가져오는 법).
+- CLAUDE.md(모든 세션이 자동으로 읽음) 상단에 OPERATION.md·PROGRESS.md 우선 정독 포인터 추가.
+- 미해결: 운영 파일(OPERATION/PLAN/PROGRESS/TASKS/scripts)이 아직 main에 없음. main에서 갓 분기한 새 세션은 0-1 절차로 직전 브랜치에서 가져와야 함. main 반영 여부는 사용자 결정 대기.
+
 ### 2026-06-13 (Claude 세션) — 손절 파라미터 문서 정합화
 
 서버 .env에는 손절 관련 키가 전혀 없음 → 손절값은 전부 config/settings.py 코드 기본값에서 옴. 코드 재확인 결과 STOP_LOSS_RATE=0.05(-5%), EMERGENCY_STOP_RATE=0.08(-8%). 초기 분석이 STOP_LOSS_RATE를 0.10으로 잘못 읽었던 것 정정.

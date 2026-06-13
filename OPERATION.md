@@ -1,5 +1,41 @@
 # OPERATION.md — 운영 절차 (배포 · 데이터 전송 · 브랜치 정책)
 
+> 이 문서 하나로 새 세션에서도 서버 배포·데이터 수신이 가능하다.
+> 새 Claude 세션을 시작했다면 먼저 아래 0번을 읽을 것.
+
+## 0. 새 세션 / 새 브랜치 시작 시 (필수 확인)
+
+매 Claude 세션은 새 브랜치(claude/xxxx)에서 작업하지만, **서버와 데이터 워크플로우는 브랜치와 무관하게 동일하다.** 아래만 지키면 끊기지 않는다.
+
+### 0-1. 새 세션의 Claude가 할 일
+
+1. 이 저장소에 `OPERATION.md`, `PLAN.md`, `PROGRESS.md`, `TASKS.md`, `scripts/deploy.sh`, `scripts/export_data.sh`가 있는지 확인한다.
+   - **없다면** (main에서 갓 분기한 경우), 직전 작업 브랜치에서 가져온다.
+     ```bash
+     # 최신 작업 내용이 있는 브랜치를 찾아 운영 파일을 현재 브랜치로 가져온다
+     git fetch origin
+     git ls-remote --heads origin            # 가장 최근 claude/* 브랜치 확인
+     git checkout origin/<직전_작업_브랜치> -- OPERATION.md PLAN.md PROGRESS.md TASKS.md scripts/
+     ```
+   - 또는 data-export 브랜치가 아닌, 가장 최근 claude/* 브랜치를 기준으로 작업을 이어간다.
+2. `PROGRESS.md` 최상단을 읽어 직전 세션이 어디까지 했는지 파악한다.
+3. 작업·커밋·푸시 후, **현재 브랜치명을 사용자에게 알려준다.** (사용자가 그 이름으로 서버에 배포)
+
+### 0-2. 사용자가 할 일 (요약 — 상세는 아래 2·3번)
+
+```bash
+# 서버 접속 후
+cd /home/ubuntu/stock-bot
+./scripts/deploy.sh <Claude가 알려준 브랜치명>   # 코드 배포
+./scripts/export_data.sh                          # 데이터 보내기 (분석 받을 때)
+```
+
+서버에는 이미 GitHub 인증(PAT)과 deploy 브랜치가 설정돼 있으므로, 위 두 명령만 반복하면 된다.
+
+### 0-3. 가장 안전한 방식 (권장)
+
+운영 파일(OPERATION/PLAN/PROGRESS/TASKS/scripts)을 `main` 브랜치에도 반영해 두면, 새 세션이 main에서 분기해도 항상 이 파일들을 갖고 시작한다. (반영은 사용자 승인 필요 — 0-1의 "없다면" 절차가 불필요해짐.)
+
 ## 1. 브랜치 정책 — 브랜치가 바뀌어도 서버 연동이 깨지지 않게
 
 문제. Claude 세션마다 새 브랜치(claude/xxxx)가 생기는데, 기존 배포 절차(reference.md)는
@@ -80,3 +116,5 @@ sudo journalctl -u stock-bot -n 100 --no-pager   # 최근 로그
 - 서버의 `.env`, `config/token_cache.json`은 git 관리 대상이 아니다. 배포로 사라지지 않지만, 백업은 별도로.
 - `deploy.sh`는 git에 추적되는 파일만 원격 상태로 덮어쓴다. 서버에서 코드를 직접 수정했다면 배포 전에 커밋하거나 포기 여부를 결정할 것.
 - reference.md의 기존 배포 명령(브랜치명 하드코딩)은 이 문서로 대체된다.
+- 서버 정보: 경로 `/home/ubuntu/stock-bot`, 서비스 `stock-bot.service`, 서버 로컬 git 브랜치 `deploy` (고정).
+- 2026-06-13 기준 최신 작업 브랜치: `claude/quirky-euler-eq5shu`. 새 세션은 이 브랜치(또는 이후 최신 claude/* 브랜치)에서 운영 파일을 가져오면 된다.
