@@ -223,6 +223,14 @@ def morning_routine():
                 time.sleep(0.3)
             except Exception as e:
                 log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
+                # 주문 접수 후 예외 가능성(유령 포지션) — 잔고에서 실제 체결 여부 확인
+                if _verify_filled_position(s, kospi_trend=kospi_trend, dip_entry_used=not relaxed):
+                    log_timing(code, s['name'], True, 'bought_verified')
+                    msg_lines.append(
+                        f"[매수 체결 확인] {s['name']} — 주문 중 오류 발생했으나 잔고에서 체결 확인됨"
+                    )
+                    time.sleep(0.3)
+                    continue
                 log_timing(code, s['name'], True, 'buy_failed')
                 s['_attempts'] = s.get('_attempts', 0) + 1
                 if s['_attempts'] < 3:
@@ -237,6 +245,48 @@ def morning_routine():
             time.sleep(60)
 
     send_message('\n\n'.join(msg_lines))
+
+def _verify_filled_position(s: dict, kospi_trend: bool, dip_entry_used: bool) -> bool:
+    """매수 주문 예외 발생 시 잔고를 조회해 실제 체결 여부 확인.
+    체결됐으면 신호 메타데이터를 보존한 채 포지션 등록 (유령 포지션 방지).
+    """
+    code = s['code']
+    try:
+        from kis_balance import get_balance
+        bal = get_balance()
+    except Exception:
+        return False
+    for b in bal['stocks']:
+        if b['code'] == code and b['qty'] > 0:
+            now = datetime.now()
+            positions[code] = {
+                'name': s['name'],
+                'sector': s['sector'],
+                'qty': b['qty'],
+                'entry_price': b['avg_price'],
+                'entry_date': now.strftime('%Y-%m-%d'),
+                'entry_time': now.strftime('%H:%M:%S'),
+                'peak_price': b['avg_price'],
+                'min_price': b['avg_price'],
+                'break_even_set': False,
+                'floor_price': 0,
+                'partial_sold': False,
+                'momentum': s.get('momentum'),
+                'foreign_net_buy_mil': s.get('foreign_net_buy_mil'),
+                'ma20_at_entry': s.get('ma20'),
+                'ma60_at_entry': s.get('ma60'),
+                'volume_ratio': s.get('volume_ratio'),
+                'kospi_trend': kospi_trend,
+                'dip_entry_used': dip_entry_used,
+                'atr': s.get('atr'),
+                'bb_pct_at_entry': s.get('bb_pct'),
+                'avg_tr_pbmn_mil': s.get('avg_tr_pbmn_mil'),
+            }
+            log_info('morning_routine',
+                     f"매수 체결 잔고 확인: {s['name']}({code}) {b['avg_price']:,}원 × {b['qty']}주")
+            return True
+    return False
+
 
 def _check_dip_entry(code: str, relaxed: bool = False) -> bool:
     """분봉 진입 조건 확인.
@@ -370,14 +420,20 @@ def _do_sell(code: str, qty: int, price: int, reason: str, trigger_price: int = 
     )
 
 
+_monitor_fail_streak = 0  # 모니터링 사이클 전체 실패(시세조회 불능) 연속 횟수
+
+
 def monitor_positions():
-    global _last_heartbeat
+    global _last_heartbeat, _monitor_fail_streak
     if not is_market_open():
         return
     if is_paused() or not positions:
+        _monitor_fail_streak = 0
         _last_heartbeat = time.time()
         return
 
+    cycle_fail_count = 0
+    cycle_total = len(positions)
     for code in list(positions.keys()):
         try:
             pos = positions[code]
@@ -473,7 +529,22 @@ def monitor_positions():
 
             time.sleep(0.3)
         except Exception as e:
+            cycle_fail_count += 1
             log_error(f'monitor_positions:{code}', e)
+
+    # API 장애 연속 감지: 전 종목 조회 실패가 이어지면 손절 모니터링 마비 상태 → 긴급 알림
+    # (2분 주기 × 5회 = 약 10분 지속 시 1차 경보, 이후 30분마다 재경보)
+    if cycle_total > 0 and cycle_fail_count >= cycle_total:
+        _monitor_fail_streak += 1
+        if _monitor_fail_streak == 5 or (_monitor_fail_streak > 5 and _monitor_fail_streak % 15 == 0):
+            log_error(
+                'monitor_positions',
+                Exception(f'시세 조회 연속 {_monitor_fail_streak}회({_monitor_fail_streak*2}분) 전체 실패 — '
+                          f'보유 {cycle_total}종목 손절 모니터링 마비 상태'),
+                critical=True,
+            )
+    else:
+        _monitor_fail_streak = 0
 
     _last_heartbeat = time.time()
 
