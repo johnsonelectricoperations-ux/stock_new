@@ -41,6 +41,25 @@ _FOLLOWUP_HEADERS = [
 _FOLLOWUP_DAYS = [3, 5, 10, 20]
 
 
+def _ensure_csv_schema(path: str, headers: list):
+    """헤더가 구버전이거나 행 길이가 컬럼 수와 다르면 파일 전체를 재작성해 정합화.
+    (컬럼 추가로 인한 스키마 드리프트 복구 — 기존 데이터는 보존, 부족한 칸은 빈값 패딩)
+    """
+    if not os.path.exists(path):
+        return
+    with open(path, 'r', encoding='utf-8', newline='') as f:
+        rows = list(csv.reader(f))
+    if not rows:
+        return
+    if rows[0] == headers and all(len(r) == len(headers) for r in rows[1:]):
+        return
+    with open(path, 'w', encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(headers)
+        for r in rows[1:]:
+            writer.writerow(r + [''] * (len(headers) - len(r)))
+
+
 def log_basis(data: dict):
     """매일 장 시작 전 KOSPI 200 베이시스 기록 (임계값 튜닝용)."""
     exists = os.path.exists(BASIS_LOG)
@@ -80,17 +99,7 @@ def log_timing(code: str, name: str, dip_met: bool, action: str):
 def log_signal_scan(scan_records: list):
     """매일 신호 스캔 결과 전체를 signal_log.csv에 기록."""
     exists = os.path.exists(SIGNAL_LOG)
-    # 헤더 불일치 감지: 구버전 헤더면 새 헤더로 교체 (기존 데이터 행은 유지)
-    if exists:
-        with open(SIGNAL_LOG, 'r', encoding='utf-8') as f:
-            first_line = f.readline().strip()
-        expected = ','.join(_SIGNAL_HEADERS)
-        if first_line != expected:
-            with open(SIGNAL_LOG, 'r', encoding='utf-8') as f:
-                all_lines = f.readlines()
-            with open(SIGNAL_LOG, 'w', encoding='utf-8', newline='') as f:
-                f.write(expected + '\n')
-                f.writelines(all_lines[1:])
+    _ensure_csv_schema(SIGNAL_LOG, _SIGNAL_HEADERS)
     with open(SIGNAL_LOG, 'a', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
         if not exists:
@@ -116,6 +125,7 @@ def log_trade(code, name, sector, entry_date, entry_time, entry_price,
               atr_at_entry=None, bb_pct_at_entry=None, avg_tr_pbmn_mil=None):
     from config.settings import KIS_IS_MOCK
     exists = os.path.exists(TRADE_LOG)
+    _ensure_csv_schema(TRADE_LOG, _HEADERS)
     exit_date = datetime.now().strftime('%Y-%m-%d')
     exit_time = datetime.now().strftime('%H:%M:%S')
     hold_days = (
