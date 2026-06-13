@@ -5,16 +5,19 @@
 
 ## Phase A — 데이터 진단 분석
 
-- [ ] EC2 데이터 수신 (trades / signal_log / timing_log / followup_log / basis_log + followup_pending.json)
-- [ ] 거래 18건 사례 진단 — 매도 사유별 분포, 이익 반납률(peak 대비)
-- [ ] followup_log 교차 — 매도 후 3/5/10/20일 가격으로 손절·트레일 적중 여부 판정
-- [ ] signal_log 필터 효율 분석 — 탈락 종목의 이후 수익률 vs 선정 종목
-- [ ] timing_log 분석 — 눌림목 vs 완화 진입 성과, 10:00 포기 종목 추적
-- [ ] 분석 결과 PROGRESS.md 기록 + 30건 후 재확인 목록 작성
+- [x] EC2 데이터 수신 (2026-06-13, data-export 브랜치)
+- [x] 거래 사례 진단 — 매도 사유별 분포, 이익 반납률 (결과: PROGRESS.md 2026-06-13)
+- [x] followup_log 교차 — 손절·모멘텀약화 매도 적중 확인
+- [ ] signal_log 필터 효율 분석 — 탈락 종목의 이후 가격 조회 필요 (KIS API로 별도 수집 후 진행)
+- [x] timing_log 분석 — buy_failed 21건 → 유령 포지션 문제 발견
+- [x] 분석 결과 PROGRESS.md 기록
 
-## Phase B — 시스템 보완 (전략 불변)
+## Phase B — 시스템 보완 (전략 불변, 우선순위 재조정 2026-06-13)
 
-- [ ] 서버 .env의 EMERGENCY_STOP_RATE 값 확인 (사용자 확인 필요)
+- [ ] **(1순위)** 매수 주문 성공 판정 보강 — 주문번호 수신 기준 분기로 유령 포지션 방지 (main.py / kis_order.py)
+- [ ] **(2순위)** API 장애 연속 감지 — 시세조회 연속 실패 N회 시 텔레그램 긴급 알림 (6/8~9 모니터링 마비 재발 방지)
+- [ ] **(3순위)** trades.csv / signal_log.csv 헤더 마이그레이션 — 컬럼 수 혼재 해소
+- [ ] 서버 .env의 STOP_LOSS_RATE(-5% 추정)·EMERGENCY_STOP_RATE 값 확인 (사용자 확인 필요)
 - [ ] EMERGENCY_STOP_RATE 기본값을 확정값으로 정합화 (config/settings.py)
 - [ ] 매수 재시도 중복 주문 방지 — 주문번호 수신 여부로 재시도 분기 (main.py morning_routine)
 - [ ] positions 상태 JSON 영속화 + 재시작 시 잔고와 대조 복구
