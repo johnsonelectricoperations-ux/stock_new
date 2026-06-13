@@ -22,7 +22,7 @@ Claude 세션 쪽 규칙.
 ```bash
 # 접속
 ssh -i "C:\project_list\stock_auto\key\AWS\stock-bot.pem" ubuntu@서버IP주소
-cd ~/stock_new
+cd /home/ubuntu/stock-bot
 
 # 첫 1회만: 배포 스크립트가 포함된 브랜치를 수동으로 받는다
 git fetch origin <브랜치명>
@@ -45,8 +45,15 @@ deploy.sh가 하는 일. 지정 브랜치 fetch → `deploy` 브랜치로 강제
 
 ```bash
 # EC2에서
-cd ~/stock_new
+cd /home/ubuntu/stock-bot
 ./scripts/export_data.sh
+```
+
+푸시에는 GitHub 인증이 필요하다. 최초 1회만 아래로 PAT(Personal Access Token)를 저장해 두면 이후엔 묻지 않는다.
+
+```bash
+git config credential.helper store
+# 다음 push 때 Username: johnsonelectricoperations-ux / Password: <PAT> 입력 → ~/.git-credentials에 저장됨
 ```
 
 운영 CSV/JSON을 `data_export/`로 복사해 원격 `data-export` 브랜치로 푸시한다.
