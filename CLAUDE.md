@@ -1,6 +1,11 @@
 CLAUDE.md
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
+이 프로젝트는 KIS API 한국주식 자동매매 시스템이며 EC2 서버에서 24시간 운영 중이다.
+새 세션을 시작하면 **OPERATION.md(서버 배포·데이터 수신·브랜치 정책)와 PROGRESS.md(직전까지 진행 상황)를 먼저 읽을 것.**
+서버 배포·데이터 전송은 브랜치가 바뀌어도 OPERATION.md 0번 절차대로 하면 끊기지 않는다.
+이 운영 파일들(OPERATION/PLAN/PROGRESS/TASKS/scripts)이 현재 브랜치에 없으면 OPERATION.md 0-1을 따라 직전 작업 브랜치에서 가져온다.
+
 Tradeoff: These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
 1. Think Before Coding
