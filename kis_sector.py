@@ -61,7 +61,8 @@ def _analyze_stock(code: str) -> dict | None:
     }
 
 
-def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_log: bool = False) -> list:
+def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_log: bool = False,
+                               reserve_count: int = 0) -> list:
     from datetime import datetime
 
     # 네이버 테마 동적 수집 (3단계 방어 포함)
@@ -172,7 +173,7 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
     candidates.sort(key=lambda x: (x['bb_pct'] > BB_PCT_PREFER, -x['momentum']))
     signals = candidates[:max_stocks]
 
-    # scan_records selected 플래그 갱신
+    # scan_records selected 플래그 갱신 (실제 선정된 상위 종목만 — 차선 후보는 제외)
     selected_codes = {s['code'] for s in signals}
     for r in scan_records:
         if r['code'] in selected_codes:
@@ -184,6 +185,12 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
     if save_log and scan_records:
         from performance import log_signal_scan
         log_signal_scan(scan_records)
+
+    # 차선 후보(필터 통과·미선정) — 고가주로 슬롯이 비면 대체 매수용. is_reserve 태그로 구분.
+    if reserve_count > 0:
+        for c in candidates[max_stocks:max_stocks + reserve_count]:
+            c['is_reserve'] = True
+            signals.append(c)
 
     return signals
 

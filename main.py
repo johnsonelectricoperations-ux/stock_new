@@ -161,23 +161,27 @@ def morning_routine():
         return
 
     try:
-        signals = get_leading_sector_signals(top_sectors=5, max_stocks=new_slots, save_log=True)
+        # 차선 후보(reserve_count)도 함께 받아 고가주로 슬롯이 비면 대체 매수
+        signals = get_leading_sector_signals(top_sectors=5, max_stocks=new_slots,
+                                             save_log=True, reserve_count=new_slots)
     except Exception as e:
         log_error('morning_routine:get_leading_sector_signals', e, critical=True)
         send_message(f'⚠️ 신호 생성 실패: {e}')
         return
 
-    # 이미 보유 중인 종목 제외
-    signals = [s for s in signals if s['code'] not in positions]
+    # 본선/차선 분리 후 이미 보유 중인 종목 제외
+    primary  = [s for s in signals if not s.get('is_reserve') and s['code'] not in positions]
+    reserves = [s for s in signals if s.get('is_reserve') and s['code'] not in positions]
 
-    if not signals:
+    if not primary:
         send_message('오늘 매수 신호 없음. 매매 보류.')
         return
 
-    total_signals = len(signals)
+    # 종목당 예산 배분 기준은 본선 종목 수 고정 — 차선 대체 시에도 같은 슬롯 예산 유지
+    total_signals = len(primary)
     per_stock_budget = available_cash // total_signals
     msg_lines = [
-        f'확인 매수 신호 {total_signals}종목 — 눌림목 진입 대기',
+        f'확인 매수 신호 {total_signals}종목 — 눌림목 진입 대기 (차선 후보 {len(reserves)}종목 대기)',
         f'가용현금: {available_cash:,}원 | 종목당: {per_stock_budget:,}원',
         f'(총자산: {get_effective_budget():,}원 | 투자중: {get_invested_capital():,}원)'
     ]
@@ -188,7 +192,7 @@ def morning_routine():
     # - 10:00 도달: 조건 미충족 종목 매수 포기 (강제 매수 없음)
     strict_deadline   = datetime.now().replace(hour=9,  minute=30, second=0, microsecond=0)
     extended_deadline = datetime.now().replace(hour=10, minute=0,  second=0, microsecond=0)
-    pending = list(signals)
+    pending = list(primary)
 
     while pending:
         _last_heartbeat = time.time()
@@ -213,8 +217,9 @@ def morning_routine():
                         s, available_cash, total_signals,
                         kospi_trend=kospi_trend, dip_entry_used=not relaxed,
                     ))
-                    log_timing(code, s['name'], True,
-                               'bought_relaxed' if relaxed else 'bought_dip')
+                    action = 'bought_reserve' if s.get('is_reserve') else (
+                        'bought_relaxed' if relaxed else 'bought_dip')
+                    log_timing(code, s['name'], True, action)
                 else:
                     still_pending.append(s)
                     log_timing(code, s['name'], False, 'waiting')
@@ -222,10 +227,17 @@ def morning_routine():
                              f"{s['name']} {'완화' if relaxed else '눌림목'} 조건 미충족 — 다음 분 재확인")
                 time.sleep(0.3)
             except InsufficientBudgetError as e:
-                # 고가주라 1주도 못 사는 경우 — 시스템 오류 아님. 긴급알림·재시도 없이 스킵.
+                # 고가주라 1주도 못 사는 경우 — 시스템 오류 아님. 차선 후보로 슬롯 대체.
                 log_timing(code, s['name'], False, 'skipped_unaffordable')
-                log_info('morning_routine', f"{s['name']} {e} — 스킵")
-                msg_lines.append(f"⏭ {s['name']} 매수 스킵 — {e}")
+                log_info('morning_routine', f"{s['name']} {e} — 차선 후보로 전환")
+                msg_lines.append(f"⏭ {s['name']} 고가 스킵 — {e}")
+                if reserves:
+                    r = reserves.pop(0)
+                    still_pending.append(r)  # 다음 분 사이클에서 눌림목 조건 확인 후 매수
+                    msg_lines.append(f"↪ 차선 후보 전환: {r['name']}({r['code']}) 모멘텀 {r['momentum']:+.2f}%")
+                    log_info('morning_routine', f"차선 후보 전환 투입: {r['name']}({r['code']})")
+                else:
+                    msg_lines.append(f"   (차선 후보 소진 — {s['name']} 슬롯 미사용)")
                 time.sleep(0.3)
             except Exception as e:
                 log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
