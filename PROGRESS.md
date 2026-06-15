@@ -20,6 +20,15 @@
 
 ## 기록
 
+### 2026-06-15 (Claude 세션) — 운영 에러 2건 대응 (견고성, 전략 불변)
+
+6/15 텔레그램 에러 2건 분석·수정.
+1. 09:21 `buy_stock:009150` "예산 부족"(삼성전기 193.6만원/주, 종목당 163.7만원 → 0주). 오탐이었음 — `_execute_buy`가 generic Exception을 던져 critical 🚨 알림 + 잔고 헛조회 + 최대 3회 재시도. → `InsufficientBudgetError`로 분리해 긴급알림·재시도 없이 조용히 스킵(timing_log: skipped_unaffordable). 고가주 만날 때마다 반복되던 오탐 해결.
+2. 14:06 `monitor_positions:000660` ReadTimeout(10s). `_get_with_retry`가 500/503만 재시도하고 Timeout/ConnectionError는 즉시 전파해 ⚠️ 노이즈. → Timeout/ConnectionError도 3회 백오프 재시도 추가. 격리 테스트로 검증(타임아웃 3회 후 raise / 중간 복구 / 404 즉시 raise).
+
+알려진 한계(Phase D 검토 대상). 고가주 스킵 시 해당 슬롯 현금이 당일 미사용으로 남음(균등배분 구조). 재배분 여부는 30건 후 검토.
+배포 필요: `./scripts/deploy.sh` (코드 변경 있음).
+
 ### 2026-06-13 (Claude 세션) — 새 세션 온보딩 절차 문서화
 
 새 Claude 세션이 다른 브랜치에서 시작해도 서버 배포·데이터 수신이 끊기지 않도록 정비.
