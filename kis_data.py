@@ -12,7 +12,7 @@ _RETRY_DELAY = 2  # 초
 
 
 def _get_with_retry(url, headers, params, verify):
-    """500/503 서버 오류 시 최대 3회 재시도."""
+    """500/503 서버 오류 및 네트워크 타임아웃/연결오류 시 최대 3회 재시도."""
     last_exc = None
     for attempt in range(_RETRY_COUNT):
         try:
@@ -25,6 +25,11 @@ def _get_with_retry(url, headers, params, verify):
                 time.sleep(_RETRY_DELAY * (attempt + 1))
                 continue
             raise
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            # 일시적 네트워크 지연/끊김 — 백오프 후 재시도 (다음 사이클까지 못 기다리는 모니터링 보호)
+            last_exc = e
+            time.sleep(_RETRY_DELAY * (attempt + 1))
+            continue
     raise last_exc
 
 

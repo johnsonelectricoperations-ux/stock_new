@@ -221,6 +221,12 @@ def morning_routine():
                     log_info('morning_routine',
                              f"{s['name']} {'완화' if relaxed else '눌림목'} 조건 미충족 — 다음 분 재확인")
                 time.sleep(0.3)
+            except InsufficientBudgetError as e:
+                # 고가주라 1주도 못 사는 경우 — 시스템 오류 아님. 긴급알림·재시도 없이 스킵.
+                log_timing(code, s['name'], False, 'skipped_unaffordable')
+                log_info('morning_routine', f"{s['name']} {e} — 스킵")
+                msg_lines.append(f"⏭ {s['name']} 매수 스킵 — {e}")
+                time.sleep(0.3)
             except Exception as e:
                 log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
                 # 주문 접수 후 예외 가능성(유령 포지션) — 잔고에서 실제 체결 여부 확인
@@ -323,6 +329,10 @@ def _get_candle_sell_info(code: str) -> dict | None:
         return None
 
 
+class InsufficientBudgetError(Exception):
+    """종목당 배분 예산으로 1주도 살 수 없는 고가주 — 시스템 오류가 아닌 정상 스킵 사유."""
+
+
 def _execute_buy(s: dict, available_cash: int, total_signals: int,
                  kospi_trend: bool = True, dip_entry_used: bool = True) -> str:
     """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환."""
@@ -330,7 +340,9 @@ def _execute_buy(s: dict, available_cash: int, total_signals: int,
     info = get_current_price(code)
     qty = calc_quantity(info['price'], total_signals, effective_budget=available_cash)
     if qty <= 0:
-        raise Exception(f"예산 부족 — 종목당 {available_cash // total_signals:,}원으로 {info['price']:,}원짜리 매수 불가")
+        raise InsufficientBudgetError(
+            f"종목당 {available_cash // total_signals:,}원으로 {info['price']:,}원짜리 1주 매수 불가"
+        )
     buy_stock(code, qty)
     now = datetime.now()
     positions[code] = {
