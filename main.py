@@ -445,6 +445,8 @@ def _do_sell(code: str, qty: int, price: int, reason: str, trigger_price: int = 
 
 
 _monitor_fail_streak = 0  # 모니터링 사이클 전체 실패(시세조회 불능) 연속 횟수
+_pos_fail_streak: dict = {}  # 종목별 연속 시세조회 실패 횟수 (단발성 타임아웃 알림 억제용)
+_POS_FAIL_ALERT = 3  # 한 종목이 연속 3회(약 6분) 실패하면 알림 — 그 전엔 파일 기록만
 
 
 def monitor_positions():
@@ -463,6 +465,7 @@ def monitor_positions():
             pos = positions[code]
             info = get_current_price(code)
             price = info['price']
+            _pos_fail_streak.pop(code, None)  # 조회 성공 — 실패 카운트 리셋
             entry = pos['entry_price']
             rate  = (price - entry) / entry
 
@@ -554,7 +557,20 @@ def monitor_positions():
             time.sleep(0.3)
         except Exception as e:
             cycle_fail_count += 1
-            log_error(f'monitor_positions:{code}', e)
+            n = _pos_fail_streak.get(code, 0) + 1
+            _pos_fail_streak[code] = n
+            # 단발성 타임아웃은 다음 2분 사이클에서 재조회되므로 파일 기록만.
+            # 연속 N회(약 6분) 실패한 종목만 알림 — 그 종목이 사실상 미감시 상태이므로.
+            if n >= _POS_FAIL_ALERT:
+                log_error(f'monitor_positions:{code}', e)
+            else:
+                log_warning('monitor_positions',
+                            f'{code} {type(e).__name__} (연속 {n}회) — 파일기록만, 다음 사이클 재조회')
+
+    # 사라진 종목(매도 완료)의 실패 카운트 정리
+    for c in list(_pos_fail_streak):
+        if c not in positions:
+            del _pos_fail_streak[c]
 
     # API 장애 연속 감지: 전 종목 조회 실패가 이어지면 손절 모니터링 마비 상태 → 긴급 알림
     # (2분 주기 × 5회 = 약 10분 지속 시 1차 경보, 이후 30분마다 재경보)
