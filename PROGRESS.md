@@ -25,6 +25,8 @@
 6/15 텔레그램 에러 2건 분석·수정.
 1. 09:21 `buy_stock:009150` "예산 부족"(삼성전기 193.6만원/주, 종목당 163.7만원 → 0주). 오탐이었음 — `_execute_buy`가 generic Exception을 던져 critical 🚨 알림 + 잔고 헛조회 + 최대 3회 재시도. → `InsufficientBudgetError`로 분리해 긴급알림·재시도 없이 조용히 스킵(timing_log: skipped_unaffordable). 고가주 만날 때마다 반복되던 오탐 해결.
 2. 14:06 `monitor_positions:000660` ReadTimeout(10s). `_get_with_retry`가 500/503만 재시도하고 Timeout/ConnectionError는 즉시 전파해 ⚠️ 노이즈. → Timeout/ConnectionError도 3회 백오프 재시도 추가. 격리 테스트로 검증(타임아웃 3회 후 raise / 중간 복구 / 404 즉시 raise).
+   - 추가 분석(6/15 14:06·14:38·15:11 3회): 정확히 ~32분 간격 = error_monitor 30분 쿨다운(ALERT_COOLDOWN). 실제 ReadTimeout은 더 빈번하나 알림만 묶인 것. 000660만 보인 건 오후에 보유 종목이 그것뿐이어서.
+   - 보강: 종목별 연속 실패 추적(`_pos_fail_streak`) 추가. 단발성 실패는 파일 기록만, 연속 3회(약 6분) 실패 종목만 알림. 조회 성공 시 리셋. 테스트 검증 완료.
 
 배포 필요: `./scripts/deploy.sh` (코드 변경 있음).
 
