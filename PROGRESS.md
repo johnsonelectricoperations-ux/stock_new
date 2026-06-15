@@ -26,8 +26,16 @@
 1. 09:21 `buy_stock:009150` "예산 부족"(삼성전기 193.6만원/주, 종목당 163.7만원 → 0주). 오탐이었음 — `_execute_buy`가 generic Exception을 던져 critical 🚨 알림 + 잔고 헛조회 + 최대 3회 재시도. → `InsufficientBudgetError`로 분리해 긴급알림·재시도 없이 조용히 스킵(timing_log: skipped_unaffordable). 고가주 만날 때마다 반복되던 오탐 해결.
 2. 14:06 `monitor_positions:000660` ReadTimeout(10s). `_get_with_retry`가 500/503만 재시도하고 Timeout/ConnectionError는 즉시 전파해 ⚠️ 노이즈. → Timeout/ConnectionError도 3회 백오프 재시도 추가. 격리 테스트로 검증(타임아웃 3회 후 raise / 중간 복구 / 404 즉시 raise).
 
-알려진 한계(Phase D 검토 대상). 고가주 스킵 시 해당 슬롯 현금이 당일 미사용으로 남음(균등배분 구조). 재배분 여부는 30건 후 검토.
 배포 필요: `./scripts/deploy.sh` (코드 변경 있음).
+
+### 2026-06-15 (Claude 세션) — 고가주 차선 후보 대체 매수 (A안, 사용자 승인)
+
+위 한계(고가주 스킵 시 슬롯 미사용)를 바로 해결. 선정 기준·균등배분은 불변, 버려지던 검증된 차선 후보로 빈 슬롯을 채움.
+- kis_sector: `reserve_count` 파라미터로 미선정 후보 반환(is_reserve 태그). 기존 호출부(telegram /signal 등)는 기본값 0이라 영향 없음.
+- main: `InsufficientBudgetError` 발생 시 차선 후보를 같은 슬롯 예산(본선 종목수 고정 분모)으로 투입. 차선 소진 시 슬롯 미사용.
+- timing_log 액션: 차선 매수는 `bought_reserve`, 고가 스킵은 `skipped_unaffordable` → 30건 후 차선 전환 거래 분리 분석 가능.
+- 검증: kis_sector 차선 반환 단위 테스트 + morning_routine 대체 루프 통합 테스트(고가주 스킵→차선 전환→슬롯 예산 유지) 통과.
+주의: 실제 매수 종목이 달라지는 변경이나 선정 로직 자체는 불변. 검증 표본에서 차선 거래는 timing_log로 구분 추적.
 
 ### 2026-06-13 (Claude 세션) — 새 세션 온보딩 절차 문서화
 
