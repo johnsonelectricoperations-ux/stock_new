@@ -20,6 +20,18 @@
 
 ## 기록
 
+### 2026-06-15 (Claude 세션) — 당일 작업 요약
+
+전략 로직(매수·매도 규칙) 불변. 견고성·자본효율·노이즈 개선 + 운영 정비.
+- 코드 수정 4건 (배포 필요: `./scripts/deploy.sh`)
+  1. 고가주 예산부족 → `InsufficientBudgetError`로 정상 스킵 (긴급알림·재시도·헛조회 제거)
+  2. 네트워크 ReadTimeout/ConnectionError 3회 백오프 재시도 (kis_data)
+  3. 고가주 스킵 시 차선 후보로 슬롯 대체 매수 (A안, 사용자 승인 / timing_log: bought_reserve)
+  4. 종목별 연속 실패 추적으로 단발성 타임아웃 알림 억제 (연속 3회만 알림)
+- 문서 정비: 손절 파라미터 정합화(-5%/-8%), 새 세션 온보딩 절차(OPERATION.md 0번 + CLAUDE.md 포인터), 운영 파일 main 반영, CLAUDE.md.txt 중복 제거 + 플러그인 설정 보존.
+- 미완(사용자 작업): ① 위 코드 4건 서버 배포 ② 불필요 브랜치 3개 삭제(file-modifications-main-ykk5n, sleepy-heisenberg-8hximg, beautiful-heisenberg-wtqme4 — 샌드박스에서 삭제 푸시 불가, EC2/웹에서 실행).
+- 상세는 아래 개별 기록 참고.
+
 ### 2026-06-15 (Claude 세션) — 운영 에러 2건 대응 (견고성, 전략 불변)
 
 6/15 텔레그램 에러 2건 분석·수정.
