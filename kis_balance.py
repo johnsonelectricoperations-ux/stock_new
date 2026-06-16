@@ -53,6 +53,41 @@ def get_balance():
         ]
     }
 
+def get_orderable_cash(code: str, price: int) -> int | None:
+    """종목별 실제 매수가능금액(미수 없는 현금 기준) 조회.
+    예수금≠주문가능금액(T+2 미결제) 불일치로 인한 주문 거부 방지용.
+    조회 실패 시 None 반환 → 호출부에서 상한 미적용(기존 동작 폴백).
+    """
+    try:
+        url = f'{KIS_ORDER_BASE_URL}/uapi/domestic-stock/v1/trading/inquire-psbl-order'
+        tr_id = 'VTTC8908R' if KIS_IS_MOCK else 'TTTC8908R'
+        headers = get_headers(tr_id)
+        params = {
+            'CANO': KIS_CANO,
+            'ACNT_PRDT_CD': KIS_ACNT_PRDT_CD,
+            'PDNO': code,
+            'ORD_UNPR': str(int(price)),
+            'ORD_DVSN': '01',            # 시장가
+            'CMA_EVLU_AMT_ICLD_YN': 'N',
+            'OVRS_ICLD_YN': 'N',
+        }
+        verify = not KIS_IS_MOCK
+        res = requests.get(url, headers=headers, params=params, verify=verify, timeout=10)
+        res.raise_for_status()
+        data = res.json()
+        if data.get('rt_cd') != '0':
+            return None
+        out = data.get('output', {})
+        # 미수 없는 매수금액 우선, 없으면 주문가능현금 → 최대매수금액 순
+        for key in ('nrcvb_buy_amt', 'ord_psbl_cash', 'max_buy_amt'):
+            v = out.get(key)
+            if v not in (None, ''):
+                return int(float(v))
+        return None
+    except Exception:
+        return None
+
+
 if __name__ == '__main__':
     b = get_balance()
     print(f'예수금: {b["cash"]:,}원')

@@ -352,10 +352,19 @@ def _execute_buy(s: dict, available_cash: int, total_signals: int,
     """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환."""
     code = s['code']
     info = get_current_price(code)
-    qty = calc_quantity(info['price'], total_signals, effective_budget=available_cash)
+    price = info['price']
+    qty = calc_quantity(price, total_signals, effective_budget=available_cash)
+    # 증권사 실제 주문가능금액으로 상한 (예수금≠주문가능, T+2 미결제 거부 방지). 조회 실패 시 미적용.
+    try:
+        from kis_balance import get_orderable_cash
+        orderable = get_orderable_cash(code, price)
+        if orderable is not None and orderable < price * qty:
+            qty = orderable // price
+    except Exception:
+        pass
     if qty <= 0:
         raise InsufficientBudgetError(
-            f"종목당 {available_cash // total_signals:,}원으로 {info['price']:,}원짜리 1주 매수 불가"
+            f"종목당 {available_cash // total_signals:,}원으로 {price:,}원짜리 1주 매수 불가"
         )
     buy_stock(code, qty)
     now = datetime.now()
