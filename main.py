@@ -9,7 +9,7 @@ from datetime import datetime
 from kis_data import get_current_price, get_minute_candles
 from kis_sector import get_leading_sector_signals
 from kis_indicator import check_market_trend
-from kis_order import buy_stock, sell_stock, calc_quantity
+from kis_order import buy_stock, sell_stock, calc_quantity, InsufficientFundsError
 from telegram_bot import send_message, is_paused, build_app
 from config.settings import (
     STOP_LOSS_RATE, TRAIL_STOP_RATE, MAX_STOCK_COUNT, TOTAL_BUDGET,
@@ -226,11 +226,13 @@ def morning_routine():
                     log_info('morning_routine',
                              f"{s['name']} {'완화' if relaxed else '눌림목'} 조건 미충족 — 다음 분 재확인")
                 time.sleep(0.3)
-            except InsufficientBudgetError as e:
-                # 고가주라 1주도 못 사는 경우 — 시스템 오류 아님. 차선 후보로 슬롯 대체.
+            except (InsufficientBudgetError, InsufficientFundsError) as e:
+                # 고가주(1주>슬롯예산) 또는 증권사 주문가능금액 부족 — 시스템 오류 아님.
+                # 🚨·재시도 없이 차선 후보로 슬롯 대체 (차선도 없으면 슬롯 미사용).
+                reason = '자금부족' if isinstance(e, InsufficientFundsError) else '고가'
                 log_timing(code, s['name'], False, 'skipped_unaffordable')
-                log_info('morning_routine', f"{s['name']} {e} — 차선 후보로 전환")
-                msg_lines.append(f"⏭ {s['name']} 고가 스킵 — {e}")
+                log_info('morning_routine', f"{s['name']} {reason} 스킵 — {e}")
+                msg_lines.append(f"⏭ {s['name']} {reason} 스킵 — {e}")
                 if reserves:
                     r = reserves.pop(0)
                     still_pending.append(r)  # 다음 분 사이클에서 눌림목 조건 확인 후 매수

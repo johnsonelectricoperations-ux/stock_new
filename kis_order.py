@@ -19,6 +19,10 @@ _RETRY_COUNT = 5
 _RETRY_DELAY = 3  # 초
 
 
+class InsufficientFundsError(Exception):
+    """증권사가 주문가능금액 부족으로 매수 거부 — 재시도 불가, 정상 스킵 사유."""
+
+
 def _post_order(tr_id, body):
     """500/503 서버 오류 시 최대 _RETRY_COUNT회 재시도. 오류 시 응답 본문 포함 예외 발생."""
     import logging
@@ -55,7 +59,11 @@ def buy_stock(stock_code, quantity):
     }
     result = _post_order(BUY_TR_ID, body)
     if result.get('rt_cd') != '0':
-        raise Exception(f"매수 실패: {result.get('msg1')}")
+        msg = result.get('msg1', '') or ''
+        # 주문가능금액 부족은 재시도해도 무의미 — 별도 예외로 분리해 정상 스킵 처리
+        if '금액' in msg and '부족' in msg:
+            raise InsufficientFundsError(f"매수 실패: {msg}")
+        raise Exception(f"매수 실패: {msg}")
     return result
 
 def sell_stock(stock_code, quantity):
