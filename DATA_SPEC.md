@@ -82,7 +82,7 @@ code, name, sector, signal_date, signal_price, reason_not_bought(not_selected/se
 ### 2-2. 진입 — 타이밍
 | 요소 | 파라미터 | 필요 데이터 | 분석법 | 상태 |
 |---|---|---|---|---|
-| 진입 시작 | 09:15(코드)/09:20(주석) | timing_log(check_time, action) | 시각별 체결 성과 | ✅ ※코드/주석 불일치 미결 |
+| 진입 시작 | **09:20**(2026-06-25 확정) | timing_log(check_time, action) | 시각별 체결 성과 | ✅ |
 | 눌림목 vs 완화 | strict 09:30 / ext 10:00 | trades.dip_entry_used | 엄격/완화 성과 | ✅ |
 
 ### 2-3. 청산 (파라미터별)
@@ -127,8 +127,8 @@ code, name, sector, signal_date, signal_price, reason_not_bought(not_selected/se
 - 남은 보정. 가드/스로틀로 미진입한 종목은 현재 'selected_not_filled'로 뭉뚱그려짐 — 발동이력(timing_log skipped_market_crash, trades.exposure_factor)과 교차분석으로 분리 가능. 더 세분이 필요하면 reason_not_bought에 사유 추가 검토.
 - API 부하. 일 후보 ~12종 × 3시점 ≈ 정상상태 6~7콜/일로 경미. 상한 불필요.
 
-### 🟡 P2. 진입 시각 코드/주석 불일치
-- 09:15(코드) vs 09:20(주석). 결정 후 일치시킬 것.
+### ✅ P2. 진입 시각 코드/주석 불일치 — 2026-06-25 해소
+- 09:20으로 확정·일치. 근거: entry_time 19건 분석 — 09:20 이전 진입 평균 -4.44%/승률14%(7건중 6건 손절) vs 09:20 이후 +1.67%/승률33%. 원래 주석 의도(09:20)와도 합치. 코드의 09:15가 드리프트였음. (N=19 단일국면이나 방향 일관, 버리는 구간이 최악 5분이라 다운사이드 작음.)
 
 ### 🟡 P3. 장중 가격 경로 부재
 - 청산 파라미터 정밀 백테스트는 1분봉 경로가 필요하나 KIS는 최근 며칠만 제공. peak/min/trigger + followup으로 근사 중. 풀 백테스트는 비현실적(DATA_SPEC 외 사유: 테마크롤 과거 스냅샷 부재).

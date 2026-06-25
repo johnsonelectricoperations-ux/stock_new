@@ -127,9 +127,9 @@ def morning_routine():
         log_error('morning_routine:check_market_trend', e)
         send_message(f'⚠️ 시장 추세 확인 실패: {e}. 매수 진행합니다.')
 
-    # 09:20 이후 주문 (장 초반 변동성 진정 후 진입)
+    # 09:20 이후 주문 (장 초반 변동성 진정 후 진입) — 09:20 이전 진입은 데이터상 평균 -4.4%·승률 14%로 부진
     now_time = datetime.now()
-    target = now_time.replace(hour=9, minute=15, second=0, microsecond=0)
+    target = now_time.replace(hour=9, minute=20, second=0, microsecond=0)
     wait_seconds = max(0, (target - now_time).total_seconds())
     if wait_seconds > 0:
         time.sleep(wait_seconds)
@@ -205,8 +205,8 @@ def morning_routine():
         f'(총자산: {get_effective_budget():,}원 | 투자중: {get_invested_capital():,}원)'
     ]
 
-    # 09:15~10:00 분봉 조건부 진입 루프
-    # - 09:15~09:30: 눌림목 조건 (현재가 > 직전 1분봉 고가 AND > 5분 MA)
+    # 09:20~10:00 분봉 조건부 진입 루프
+    # - 09:20~09:30: 눌림목 조건 (현재가 > 직전 1분봉 고가 AND > 5분 MA)
     # - 09:30~10:00: 완화 조건 (현재가 > 5분 MA만 확인, 고가 돌파 제외)
     # - 10:00 도달: 조건 미충족 종목 매수 포기 (강제 매수 없음)
     strict_deadline   = datetime.now().replace(hour=9,  minute=30, second=0, microsecond=0)
