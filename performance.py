@@ -25,6 +25,7 @@ _HEADERS = [
     'ma20_at_entry', 'ma60_at_entry', 'volume_ratio',
     'kospi_trend', 'dip_entry_used',
     'atr_at_entry', 'bb_pct_at_entry', 'avg_tr_pbmn_mil', 'is_mock',
+    'exposure_factor', 'crawl_source',
 ]
 _SIGNAL_HEADERS = [
     'date', 'sector', 'sector_rank', 'sector_avg_momentum',
@@ -162,7 +163,8 @@ def log_trade(code, name, sector, entry_date, entry_time, entry_price,
               momentum=None, foreign_net_buy_mil=None,
               ma20_at_entry=None, ma60_at_entry=None, volume_ratio=None,
               kospi_trend=None, dip_entry_used=None,
-              atr_at_entry=None, bb_pct_at_entry=None, avg_tr_pbmn_mil=None):
+              atr_at_entry=None, bb_pct_at_entry=None, avg_tr_pbmn_mil=None,
+              exposure_factor=None, crawl_source=None):
     from config.settings import KIS_IS_MOCK
     exists = os.path.exists(TRADE_LOG)
     _ensure_csv_schema(TRADE_LOG, _HEADERS)
@@ -188,6 +190,7 @@ def log_trade(code, name, sector, entry_date, entry_time, entry_price,
             ma20_at_entry, ma60_at_entry, volume_ratio,
             kospi_trend, dip_entry_used,
             atr_at_entry, bb_pct_at_entry, avg_tr_pbmn_mil, KIS_IS_MOCK,
+            exposure_factor, crawl_source,
         ])
 
 

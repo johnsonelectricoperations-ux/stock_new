@@ -184,6 +184,10 @@ def morning_routine():
         send_message(f'⚠️ 신호 생성 실패: {e}')
         return
 
+    # 테마 데이터 출처(live/cache/fallback) — 거래에 태깅해 신호 품질 분석에 사용
+    from naver_theme import get_crawl_source
+    crawl_source = get_crawl_source()
+
     # 본선/차선 분리 후 이미 보유 중인 종목 제외
     primary  = [s for s in signals if not s.get('is_reserve') and s['code'] not in positions]
     reserves = [s for s in signals if s.get('is_reserve') and s['code'] not in positions]
@@ -253,6 +257,7 @@ def morning_routine():
                     msg_lines.append(_execute_buy(
                         s, available_cash, total_signals,
                         kospi_trend=kospi_trend, dip_entry_used=not relaxed,
+                        exposure_factor=exposure_factor, crawl_source=crawl_source,
                     ))
                     action = 'bought_reserve' if s.get('is_reserve') else (
                         'bought_relaxed' if relaxed else 'bought_dip')
@@ -281,7 +286,8 @@ def morning_routine():
             except Exception as e:
                 log_error(f'morning_routine:buy_stock:{code}', e, critical=True)
                 # 주문 접수 후 예외 가능성(유령 포지션) — 잔고에서 실제 체결 여부 확인
-                if _verify_filled_position(s, kospi_trend=kospi_trend, dip_entry_used=not relaxed):
+                if _verify_filled_position(s, kospi_trend=kospi_trend, dip_entry_used=not relaxed,
+                                           exposure_factor=exposure_factor, crawl_source=crawl_source):
                     log_timing(code, s['name'], True, 'bought_verified')
                     msg_lines.append(
                         f"[매수 체결 확인] {s['name']} — 주문 중 오류 발생했으나 잔고에서 체결 확인됨"
@@ -303,7 +309,8 @@ def morning_routine():
 
     send_message('\n\n'.join(msg_lines))
 
-def _verify_filled_position(s: dict, kospi_trend: bool, dip_entry_used: bool) -> bool:
+def _verify_filled_position(s: dict, kospi_trend: bool, dip_entry_used: bool,
+                            exposure_factor: float = 1.0, crawl_source: str = '') -> bool:
     """매수 주문 예외 발생 시 잔고를 조회해 실제 체결 여부 확인.
     체결됐으면 신호 메타데이터를 보존한 채 포지션 등록 (유령 포지션 방지).
     """
@@ -338,6 +345,8 @@ def _verify_filled_position(s: dict, kospi_trend: bool, dip_entry_used: bool) ->
                 'atr': s.get('atr'),
                 'bb_pct_at_entry': s.get('bb_pct'),
                 'avg_tr_pbmn_mil': s.get('avg_tr_pbmn_mil'),
+                'exposure_factor': exposure_factor,
+                'crawl_source': crawl_source,
             }
             log_info('morning_routine',
                      f"매수 체결 잔고 확인: {s['name']}({code}) {b['avg_price']:,}원 × {b['qty']}주")
@@ -385,7 +394,8 @@ class InsufficientBudgetError(Exception):
 
 
 def _execute_buy(s: dict, available_cash: int, total_signals: int,
-                 kospi_trend: bool = True, dip_entry_used: bool = True) -> str:
+                 kospi_trend: bool = True, dip_entry_used: bool = True,
+                 exposure_factor: float = 1.0, crawl_source: str = '') -> str:
     """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환."""
     code = s['code']
     info = get_current_price(code)
@@ -427,6 +437,8 @@ def _execute_buy(s: dict, available_cash: int, total_signals: int,
         'atr': s.get('atr'),
         'bb_pct_at_entry': s.get('bb_pct'),
         'avg_tr_pbmn_mil': s.get('avg_tr_pbmn_mil'),
+        'exposure_factor': exposure_factor,
+        'crawl_source': crawl_source,
     }
     log_info('morning_routine', f"매수 체결: {s['name']}({code}) {info['price']:,}원 × {qty}주")
     return (
@@ -482,6 +494,8 @@ def _do_sell(code: str, qty: int, price: int, reason: str, trigger_price: int = 
         atr_at_entry=pos.get('atr'),
         bb_pct_at_entry=pos.get('bb_pct_at_entry'),
         avg_tr_pbmn_mil=pos.get('avg_tr_pbmn_mil'),
+        exposure_factor=pos.get('exposure_factor'),
+        crawl_source=pos.get('crawl_source'),
     )
     add_followup_pending(code, pos['name'], exit_date, price, reason)
     log_info('sell', f"{pos['name']}({code}) {reason} {price:,}원 수익률 {profit_rate:+.2f}%")
