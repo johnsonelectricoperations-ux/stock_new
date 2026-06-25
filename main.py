@@ -19,7 +19,7 @@ from config.settings import (
     KIS_IS_MOCK, SELL_TAX_RATE, COMMISSION_RATE,
     MARKET_CRASH_GUARD_RATE,
 )
-from performance import log_trade, add_followup_pending, log_basis, log_timing
+from performance import log_trade, add_followup_pending, log_basis, log_timing, log_market
 from basis_collector import get_basis
 from error_monitor import setup_logging, log_error, log_info, log_warning
 
@@ -148,6 +148,12 @@ def morning_routine():
             log_warning('morning_routine', '베이시스 수집 실패 — KODEX 200 조회 불가')
     except Exception as e:
         log_error('morning_routine:basis_collector', e)
+
+    # 아침 KODEX200 등락률 스냅샷 기록 — 급락 가드 임계값 보정용 데이터 축적
+    try:
+        log_market(get_market_intraday_change(), MARKET_CRASH_GUARD_RATE)
+    except Exception as e:
+        log_error('morning_routine:log_market', e)
 
     # 신규 매수 가능 슬롯 및 가용 현금 계산
     new_slots = MAX_STOCK_COUNT - len(positions)
