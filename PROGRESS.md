@@ -28,7 +28,9 @@
 
 **장중 코스피 급락 가드 추가(코드 변경).** 특정 진입일 전 종목 동반손절(06-19·06-05·06-03 등) → 일봉 MA60 필터가 장중 급락일을 못 잡는 사각지대. `morning_routine` 진입 루프에 KODEX200 당일 등락률 ≤ -`MARKET_CRASH_GUARD_RATE`(.env 기본 **1.5%**, 0 비활성)면 그날 신규매수 보류. 익일 모멘텀 루틴이 반등 참여. 종가 반등매매는 검증 데이터 없어 보류. 격리 테스트 통과.
 
-**지수 등락률 로깅 추가.** 임계값 정밀 보정용으로 매일 아침 KODEX200 당일 등락률을 `market_log.csv`에 1행 기록(`log_market`). 보유 basis_log spot은 다른 소스라 노이즈 큼(std 4.75%)→ 가드가 실제 보는 KODEX200 change_rate를 직접 수집. export_data.sh에 market_log.csv 추가. 2~3주 수집 후 발동빈도 vs 실제 시장으로 임계값 재보정.
+**지수 등락률 로깅 추가(분당 궤적).** 임계값 정밀 보정용으로 진입 루프에서 KODEX200 당일 등락률을 **분당 1행** `market_log.csv`에 기록(`log_market`). 보유 basis_log spot은 다른 소스라 노이즈 큼(std 4.75%)→ 가드가 실제 보는 KODEX200 change_rate를 직접 수집. export_data.sh에 market_log.csv 추가.
+
+**가드 분당 throttle.** 가드를 진입 루프 매 사이클(아침 수백 회)→ **분당 1회** 평가로 변경. 개장 변동성·API 부하 완화 + 09:15~09:30 지수 궤적 축적. 사용자 제안(장초반 하락 기울기로 급락장 판단)은 타당하나 파라미터↑·검증데이터0·개장노이즈로 지금은 활성화 보류 — 분당 궤적을 모아 2~3주 뒤 '레벨 vs 기울기'를 데이터로 비교 후 결정.
 
 **배포 필요: `./scripts/deploy.sh`.** 배포 후 skipped_market_crash 로그 + market_log.csv로 -1.5% 적정성 확인.
 

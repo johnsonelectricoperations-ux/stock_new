@@ -149,12 +149,6 @@ def morning_routine():
     except Exception as e:
         log_error('morning_routine:basis_collector', e)
 
-    # 아침 KODEX200 등락률 스냅샷 기록 — 급락 가드 임계값 보정용 데이터 축적
-    try:
-        log_market(get_market_intraday_change(), MARKET_CRASH_GUARD_RATE)
-    except Exception as e:
-        log_error('morning_routine:log_market', e)
-
     # 신규 매수 가능 슬롯 및 가용 현금 계산
     new_slots = MAX_STOCK_COUNT - len(positions)
     # 시장가 매수 슬리피지·수수료 감안해 가용현금의 95%만 사용
@@ -200,6 +194,7 @@ def morning_routine():
     strict_deadline   = datetime.now().replace(hour=9,  minute=30, second=0, microsecond=0)
     extended_deadline = datetime.now().replace(hour=10, minute=0,  second=0, microsecond=0)
     pending = list(primary)
+    last_idx_minute = None  # 지수 체크·로깅 분당 1회 throttle용
 
     while pending:
         _last_heartbeat = time.time()
@@ -212,11 +207,17 @@ def morning_routine():
                 msg_lines.append(f"⏱ {s['name']} 10:00까지 진입 조건 미충족 — 오늘 매수 포기")
             break
 
-        # 장중 코스피 급락 가드 — 당일 지수가 임계값 이상 빠지면 그날 신규 매수 전면 보류
-        # (일봉 MA60 필터로 못 잡는 '장중 급락일' 전 종목 동반손절 방지)
-        if MARKET_CRASH_GUARD_RATE > 0:
+        # 장중 지수 추적 + 급락 가드 — 분당 1회만 평가 (개장 변동성·API 부하 완화, 기울기 분석용 궤적 축적)
+        # 일봉 MA60 필터로 못 잡는 '장중 급락일' 전 종목 동반손절 방지
+        cur_minute = now.strftime('%H:%M')
+        if cur_minute != last_idx_minute:
+            last_idx_minute = cur_minute
             idx_change = get_market_intraday_change()
-            if idx_change <= -MARKET_CRASH_GUARD_RATE:
+            try:
+                log_market(idx_change, MARKET_CRASH_GUARD_RATE)  # 분당 지수 궤적 기록 (레벨 vs 기울기 보정용)
+            except Exception as e:
+                log_error('morning_routine:log_market', e)
+            if MARKET_CRASH_GUARD_RATE > 0 and idx_change <= -MARKET_CRASH_GUARD_RATE:
                 for s in pending:
                     log_timing(s['code'], s['name'], False, 'skipped_market_crash')
                 msg_lines.append(
