@@ -8,7 +8,7 @@ import threading
 from datetime import datetime
 from kis_data import get_current_price, get_minute_candles
 from kis_sector import get_leading_sector_signals
-from kis_indicator import check_market_trend
+from kis_indicator import check_market_trend, get_market_intraday_change
 from kis_order import buy_stock, sell_stock, calc_quantity, InsufficientFundsError
 from telegram_bot import send_message, is_paused, build_app
 from config.settings import (
@@ -17,6 +17,7 @@ from config.settings import (
     PARTIAL_SELL_TRIGGER, TIME_STOP_DAYS, TIME_STOP_MIN_RATE,
     EMERGENCY_STOP_RATE, MOMENTUM_EXIT_RATE,
     KIS_IS_MOCK, SELL_TAX_RATE, COMMISSION_RATE,
+    MARKET_CRASH_GUARD_RATE,
 )
 from performance import log_trade, add_followup_pending, log_basis, log_timing
 from basis_collector import get_basis
@@ -204,6 +205,21 @@ def morning_routine():
                 log_timing(s['code'], s['name'], False, 'skipped_timeout')
                 msg_lines.append(f"⏱ {s['name']} 10:00까지 진입 조건 미충족 — 오늘 매수 포기")
             break
+
+        # 장중 코스피 급락 가드 — 당일 지수가 임계값 이상 빠지면 그날 신규 매수 전면 보류
+        # (일봉 MA60 필터로 못 잡는 '장중 급락일' 전 종목 동반손절 방지)
+        if MARKET_CRASH_GUARD_RATE > 0:
+            idx_change = get_market_intraday_change()
+            if idx_change <= -MARKET_CRASH_GUARD_RATE:
+                for s in pending:
+                    log_timing(s['code'], s['name'], False, 'skipped_market_crash')
+                msg_lines.append(
+                    f'🛑 코스피 급락 감지 (KODEX200 {idx_change:+.2f}%, 기준 -{MARKET_CRASH_GUARD_RATE:.1f}%) '
+                    f'— 오늘 신규 매수 {len(pending)}종목 보류'
+                )
+                log_warning('morning_routine',
+                            f'장중 급락 가드 발동 ({idx_change:+.2f}%) — 신규 매수 {len(pending)}종목 보류')
+                break
 
         relaxed = now >= strict_deadline  # 09:30 이후면 완화 조건 사용
         still_pending = []

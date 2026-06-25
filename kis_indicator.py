@@ -73,6 +73,17 @@ def check_market_trend():
         return True  # 조회 실패 시 통과
 
 
+def get_market_intraday_change():
+    """KODEX 200(069500) 당일 등락률(%) 반환. 장중 코스피 급락 가드용.
+    조회 실패 시 0.0 반환 → 가드 미발동(기존 동작 유지).
+    """
+    try:
+        from kis_data import get_current_price
+        return get_current_price('069500')['change_rate']
+    except Exception:
+        return 0.0
+
+
 def check_trend(stock_code):
     df = get_daily_ohlcv(stock_code)
 
