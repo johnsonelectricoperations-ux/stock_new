@@ -12,6 +12,8 @@ MARKET_LOG = 'market_log.csv'
 TIMING_LOG = 'timing_log.csv'
 FOLLOWUP_LOG = 'followup_log.csv'
 FOLLOWUP_PENDING = 'config/followup_pending.json'
+REJECTED_LOG = 'rejected_followup.csv'              # 미진입 후보 사후추적 (필터·가드·스로틀 효과검증)
+REJECTED_PENDING = 'config/rejected_pending.json'
 
 _BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct', 'basis_slope', 'vkospi']
 _TIMING_HEADERS = ['date', 'code', 'name', 'check_time', 'dip_met', 'action']
@@ -41,6 +43,12 @@ _FOLLOWUP_HEADERS = [
     'd10_price', 'd10_rate', 'd20_price', 'd20_rate',
 ]
 _FOLLOWUP_DAYS = [3, 5, 10, 20]
+_REJECTED_DAYS = [3, 5, 10]
+_REJECTED_HEADERS = [
+    'code', 'name', 'sector', 'signal_date', 'signal_price',
+    'reason_not_bought', 'selected', 'passed_filters',
+    'd3_price', 'd3_rate', 'd5_price', 'd5_rate', 'd10_price', 'd10_rate',
+]
 
 
 def _ensure_csv_schema(path: str, headers: list):
@@ -275,6 +283,121 @@ def _write_followup_log(item: dict):
             item['d5'],  rate(item['d5']),
             item['d10'], rate(item['d10']),
             item['d20'], rate(item['d20']),
+        ])
+
+
+# ─── 미진입 후보 사후추적 (rejected followup) ──────────────────────────────
+# 목적. signal_log의 후보 중 '안 산' 종목의 이후 성과를 추적해, 진입 필터·급락가드·
+# 스로틀이 실제로 나쁜 종목을 걸렀는지(counterfactual) 검증한다. followup의 거울상.
+
+def _load_rejected_pending() -> list:
+    if not os.path.exists(REJECTED_PENDING):
+        return []
+    try:
+        with open(REJECTED_PENDING, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def _save_rejected_pending(pending: list):
+    os.makedirs('config', exist_ok=True)
+    with open(REJECTED_PENDING, 'w', encoding='utf-8') as f:
+        json.dump(pending, f, ensure_ascii=False, indent=2)
+
+
+def seed_rejected_from_signal_log(signal_date: str, bought_codes: set) -> int:
+    """오늘 signal_log의 후보 중 미진입(=bought_codes 제외) 종목을 사후추적 큐에 적재.
+    reason_not_bought: not_selected(선정 탈락) / selected_not_filled(선정됐으나 미체결).
+    중복(code+signal_date)·signal_price 결측은 제외. 적재 건수 반환.
+    """
+    if not os.path.exists(SIGNAL_LOG):
+        return 0
+    try:
+        with open(SIGNAL_LOG, 'r', encoding='utf-8', newline='') as f:
+            rows = [r for r in csv.DictReader(f) if r.get('date') == signal_date]
+    except Exception:
+        return 0
+    pending = _load_rejected_pending()
+    seen = {(p['code'], p['signal_date']) for p in pending}
+    added = 0
+    for r in rows:
+        code = r.get('code')
+        if not code or code in bought_codes or (code, signal_date) in seen:
+            continue
+        try:
+            sp = int(float(r.get('signal_price') or 0))
+        except (ValueError, TypeError):
+            sp = 0
+        if sp <= 0:
+            continue
+        selected = str(r.get('selected'))
+        pending.append({
+            'code': code, 'name': r.get('name', ''), 'sector': r.get('sector', ''),
+            'signal_date': signal_date, 'signal_price': sp,
+            'reason_not_bought': 'selected_not_filled' if selected == 'True' else 'not_selected',
+            'selected': selected, 'passed_filters': str(r.get('passed_all_filters')),
+            'd3': None, 'd5': None, 'd10': None,
+        })
+        seen.add((code, signal_date))
+        added += 1
+    if added:
+        _save_rejected_pending(pending)
+    return added
+
+
+def get_rejected_due(today_str: str) -> list:
+    """오늘 기준 가격추적이 필요한 (item, day_key) 목록."""
+    pending = _load_rejected_pending()
+    today = datetime.strptime(today_str, '%Y-%m-%d')
+    due = []
+    for item in pending:
+        sig_dt = datetime.strptime(item['signal_date'], '%Y-%m-%d')
+        days_elapsed = (today - sig_dt).days
+        for d in _REJECTED_DAYS:
+            key = f'd{d}'
+            if days_elapsed >= d and item.get(key) is None:
+                due.append((item, key))
+    return due
+
+
+def record_rejected_price(code: str, signal_date: str, day_key: str, price: int):
+    """미진입 후보 사후 가격 기록. 모든 시점 완료 시 rejected_followup.csv에 기록."""
+    pending = _load_rejected_pending()
+    target = None
+    for item in pending:
+        if item['code'] == code and item['signal_date'] == signal_date:
+            item[day_key] = price
+            target = item
+            break
+    if target is None:
+        return
+    _save_rejected_pending(pending)
+
+    if all(target.get(f'd{d}') is not None for d in _REJECTED_DAYS):
+        _write_rejected_log(target)
+        pending = [p for p in pending
+                   if not (p['code'] == code and p['signal_date'] == signal_date)]
+        _save_rejected_pending(pending)
+
+
+def _write_rejected_log(item: dict):
+    sp = item['signal_price']
+    exists = os.path.exists(REJECTED_LOG)
+    with open(REJECTED_LOG, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        if not exists:
+            writer.writerow(_REJECTED_HEADERS)
+
+        def rate(p):
+            return round((p - sp) / sp * 100, 2) if p else ''
+
+        writer.writerow([
+            item['code'], item['name'], item['sector'], item['signal_date'], sp,
+            item['reason_not_bought'], item['selected'], item['passed_filters'],
+            item['d3'],  rate(item['d3']),
+            item['d5'],  rate(item['d5']),
+            item['d10'], rate(item['d10']),
         ])
 
 

@@ -54,7 +54,12 @@ date, time, kodex200_change_rate, guard_threshold
 date, time, kospi200_spot, kospi200_futures, basis, basis_pct, basis_slope, vkospi
 - 용도. 베이시스 slope 필터(2개월+), VKOSPI 필터(3개월+). ※ spot은 별도소스라 노이즈 큼(std 4.75%) — 가드용 지수는 market_log를 쓸 것.
 
-### 1-7. error.log — 운영 에러/경고
+### 1-7. rejected_followup.csv — 미진입 후보 사후 추적 ⬅신규
+code, name, sector, signal_date, signal_price, reason_not_bought(not_selected/selected_not_filled), selected, passed_filters, d3/d5/d10_price·rate
+- 용도. **'안 산' 종목의 이후 성과** — 필터·급락가드·스로틀이 실제로 나쁜 종목을 걸렀는지(counterfactual) 검증. 진입 필터 최적화의 핵심.
+- 수집. 매일 morning_routine이 signal_log 후보 중 미보유 종목을 `config/rejected_pending.json` 큐에 적재 → 15:36 rejected_checker가 d3/d5/d10 가격 기록.
+
+### 1-8. error.log — 운영 에러/경고
 - 용도. 서버 안정성, 가드·스로틀 발동 로그(log_warning) 추적.
 
 ---
@@ -68,9 +73,9 @@ date, time, kospi200_spot, kospi200_futures, basis, basis_pct, basis_slope, vkos
 |---|---|---|---|---|
 | 테마 모멘텀 | MIN_THEME_MOMENTUM=15 | signal_log(sector_avg_momentum, selected) + trades(성과) | 테마모멘텀 구간별 성과 | ✅ |
 | 테마 출처 신뢰 | — | trades.crawl_source | live vs fallback 성과 비교 | ✅⬅신규 |
-| 추세 필터 | MA20>MA60 | signal_log(is_uptrend, ma20/60) + 탈락종목 사후가 | 통과/탈락 사후성과 비교 | ❌ 탈락 사후가 없음 |
-| 외국인 필터 | FOREIGN_BUY_THRESHOLD=0 | signal_log(foreign_5d) + 성과 | 순매수 비중별 성과 | ⚠️ 선정만, 탈락 사후 없음 |
-| 거래량 필터 | 전일≥20일평균 | signal_log(volume_ratio) | 구간별 성과 | ⚠️ |
+| 추세 필터 | MA20>MA60 | signal_log(is_uptrend) + rejected_followup | 통과/탈락 사후성과 비교 | ✅⬅신규 |
+| 외국인 필터 | FOREIGN_BUY_THRESHOLD=0 | signal_log(foreign_5d) + rejected_followup | 순매수 비중별 사후성과 | ✅⬅신규 |
+| 거래량 필터 | 전일≥20일평균 | signal_log(volume_ratio) + rejected_followup | 구간별 사후성과 | ✅⬅신규 |
 | BB%B 과열 | BB_PCT_MAX=0.95 / PREFER=0.85 | trades.bb_pct_at_entry + 성과 | 구간별 성과(현 N=11) | ⚠️ 표본 부족 |
 | 대형주 | MIN_MKTCAP_BIL=5000 | trades.avg_tr_pbmn_mil | 대형/중소 성과 | ⚠️ 표본 부족 |
 
@@ -117,11 +122,10 @@ date, time, kospi200_spot, kospi200_futures, basis, basis_pct, basis_slope, vkos
 
 ## 4. 알려진 데이터 갭 (우선순위)
 
-### 🔴 P1. 탈락/스킵 종목 사후 성과 (counterfactual) — 미수집
-- 문제. signal_log는 탈락 종목을 기록하지만 **그 종목의 이후 가격이 없어**, "필터가 실제로 나쁜 종목을 걸렀나"를 검증 못 한다. 급락가드·스로틀이 '안 산' 종목, 매수포기(skipped_timeout) 종목의 사후 성과도 마찬가지.
-- 영향. 진입 필터(추세·외국인·거래량·BB%B) 최적화의 핵심 근거가 없음. analysis_plan #2·#4가 여기 막혀 있음.
-- 제안 메커니즘(미구현). followup과 동형으로 `rejected_followup` — 매일 signal_log의 selected=False(및 timing_log skipped/급락가드/스로틀로 미진입) 종목을 큐에 적재하고, 3·5·10일 후 현재가를 조회해 `rejected_followup.csv`(code, date, reason_not_bought, signal_price, d3/d5/d10_rate)에 기록. KIS 분당 API 부하 고려해 종목수 상한·시간 분산 필요.
-- **착수 전 사용자 승인 필요**(스케줄러 부하·신규 파일 추가).
+### ✅ P1. 탈락/스킵 종목 사후 성과 (counterfactual) — 2026-06-25 구현 완료
+- 해결. `rejected_followup.csv`(1-7절) 도입 — 매일 morning_routine이 signal_log 후보 중 미보유 종목을 큐 적재, 15:36 rejected_checker가 d3/d5/d10 추적. reason_not_bought로 탈락(not_selected) vs 미체결(selected_not_filled) 구분.
+- 남은 보정. 가드/스로틀로 미진입한 종목은 현재 'selected_not_filled'로 뭉뚱그려짐 — 발동이력(timing_log skipped_market_crash, trades.exposure_factor)과 교차분석으로 분리 가능. 더 세분이 필요하면 reason_not_bought에 사유 추가 검토.
+- API 부하. 일 후보 ~12종 × 3시점 ≈ 정상상태 6~7콜/일로 경미. 상한 불필요.
 
 ### 🟡 P2. 진입 시각 코드/주석 불일치
 - 09:15(코드) vs 09:20(주석). 결정 후 일치시킬 것.
@@ -137,4 +141,6 @@ date, time, kospi200_spot, kospi200_futures, basis, basis_pct, basis_slope, vkos
 - [ ] market_log.csv 분당 행 쌓이는지(첫 장중)
 - [ ] 급락일에 timing_log skipped_market_crash 남는지
 - [ ] 스로틀 발동 시 trades.exposure_factor=0.5 기록되는지
-- [ ] export_data.sh가 market_log.csv 포함 전송하는지
+- [ ] rejected_followup.csv 생성·d3/d5/d10 채워지는지(첫 신호일 +10거래일 후)
+- [ ] config/rejected_pending.json 큐 적재·완료 후 정리되는지
+- [ ] export_data.sh가 market_log.csv·rejected_followup.csv 포함 전송하는지

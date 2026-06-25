@@ -4,7 +4,7 @@ set -e
 cd "$(dirname "$0")/.."
 
 mkdir -p data_export
-FILES="trades.csv signal_log.csv basis_log.csv timing_log.csv followup_log.csv market_log.csv error.log config/followup_pending.json"
+FILES="trades.csv signal_log.csv basis_log.csv timing_log.csv followup_log.csv market_log.csv rejected_followup.csv error.log config/followup_pending.json config/rejected_pending.json"
 COPIED=0
 for f in $FILES; do
     if [ -f "$f" ]; then

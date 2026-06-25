@@ -37,7 +37,8 @@
 전략·파라미터별 효과분석을 확실히 하기 위한 데이터 감사·보강.
 - **trades.csv 2컬럼 추가**(exposure_factor, crawl_source) — 소프트 스로틀 효과·테마출처 신호품질을 사후 분석 가능하게 태깅. _ensure_csv_schema로 기존 29행 자동 마이그(빈칸 패딩) 검증.
 - **DATA_SPEC.md 신설** — 7종 로그 데이터 사전 + 전략/파라미터별 '필요데이터→분석법→수집상태' 매핑 + 알려진 갭. 추후 분석의 단일 참조.
-- **P1 갭 명시**: 탈락/스킵 종목 사후 성과(counterfactual) 미수집 → 진입필터 최적화 막힘. rejected_followup 메커니즘 제안(미구현, 승인 대기).
+- **P1 갭 해소(구현 완료)**: `rejected_followup.csv` 도입 — 매일 morning_routine이 signal_log 후보 중 미보유 종목을 `config/rejected_pending.json` 큐 적재, 15:36 rejected_checker가 d3/d5/d10 추적. 진입 필터(추세·외국인·거래량·BB%B)를 '안 산 종목'의 사후성과로 검증 가능해짐. 시딩→due→기록→flush 전체 파이프라인 격리 테스트 통과.
+- export_data.sh에 market_log·rejected_followup·rejected_pending 추가.
 - 격리 테스트 통과. **배포 필요.**
 
 ### 2026-06-25 (Claude 세션) — 횡보·단기조정 대응: 소프트 스로틀 (자율 구현)

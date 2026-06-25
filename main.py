@@ -22,7 +22,7 @@ from config.settings import (
 )
 from performance import (
     log_trade, add_followup_pending, log_basis, log_timing, log_market,
-    trailing_consecutive_losses,
+    trailing_consecutive_losses, seed_rejected_from_signal_log,
 )
 from basis_collector import get_basis
 from error_monitor import setup_logging, log_error, log_info, log_warning
@@ -306,6 +306,16 @@ def morning_routine():
         pending = still_pending
         if pending:
             time.sleep(60)
+
+    # 미진입 후보 사후추적 적재 — 오늘 signal_log 후보 중 보유하지 않은 종목(필터 탈락·
+    # 가드/스로틀/타임아웃 미진입)을 큐에 넣어 d3/d5/d10 성과를 추적(필터 효과 검증용).
+    try:
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        n_seed = seed_rejected_from_signal_log(today_str, set(positions.keys()))
+        if n_seed:
+            log_info('morning_routine', f'미진입 후보 {n_seed}종목 사후추적 적재')
+    except Exception as e:
+        log_error('morning_routine:seed_rejected', e)
 
     send_message('\n\n'.join(msg_lines))
 
@@ -670,6 +680,24 @@ def followup_checker():
             log_error(f"followup_checker:{item['code']}", e)
 
 
+def rejected_checker():
+    """미진입 후보 사후 가격 추적 — 매일 15:35 실행 (followup_checker와 동반)."""
+    if not is_trading_day():
+        return
+    from performance import get_rejected_due, record_rejected_price
+    today_str = datetime.now().strftime('%Y-%m-%d')
+    due = get_rejected_due(today_str)
+    if not due:
+        return
+    for item, day_key in due:
+        try:
+            info = get_current_price(item['code'])
+            record_rejected_price(item['code'], item['signal_date'], day_key, info['price'])
+        except Exception as e:
+            log_error(f"rejected_checker:{item['code']}", e)
+    log_info('rejected_checker', f'미진입 후보 사후추적 {len(due)}건 처리')
+
+
 def daily_report():
     if not is_trading_day():
         return
@@ -882,6 +910,7 @@ def run_scheduler():
     schedule.every().day.at('08:00').do(morning_routine)
     schedule.every(2).minutes.do(monitor_positions)
     schedule.every().day.at('15:35').do(followup_checker)
+    schedule.every().day.at('15:36').do(rejected_checker)
     schedule.every().day.at('15:35').do(daily_report)
     while True:
         try:
