@@ -39,6 +39,10 @@ FOREIGN_BUY_THRESHOLD = int(os.getenv('FOREIGN_BUY_THRESHOLD', '0'))
 # 장중 코스피 급락 가드 — KODEX 200 당일 등락률(%)이 -이 값 이하면 그날 신규 매수 보류 (0 = 비활성)
 MARKET_CRASH_GUARD_RATE = float(os.getenv('MARKET_CRASH_GUARD_RATE', '1.5'))
 
+# 소프트 스로틀 — 연속 손절 N회 이상이면 신규 매수 투입자본을 축소 (횡보·단기조정 출혈 완화, 익절 1건 시 자동 해제)
+DRAWDOWN_THROTTLE_STREAK = int(os.getenv('DRAWDOWN_THROTTLE_STREAK', '3'))     # 0 = 비활성
+DRAWDOWN_THROTTLE_FACTOR = float(os.getenv('DRAWDOWN_THROTTLE_FACTOR', '0.5'))  # 발동 시 가용현금 배수
+
 # 실전 거래 비용 (모의투자 KIS_IS_MOCK=true 시에는 미적용)
 SELL_TAX_RATE   = float(os.getenv('SELL_TAX_RATE', '0.0015'))    # 증권거래세 0.15% (매도 시)
 COMMISSION_RATE = float(os.getenv('COMMISSION_RATE', '0.00015')) # 매매 수수료 0.015% (매수/매도 각각)

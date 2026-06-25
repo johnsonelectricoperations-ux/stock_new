@@ -18,8 +18,12 @@ from config.settings import (
     EMERGENCY_STOP_RATE, MOMENTUM_EXIT_RATE,
     KIS_IS_MOCK, SELL_TAX_RATE, COMMISSION_RATE,
     MARKET_CRASH_GUARD_RATE,
+    DRAWDOWN_THROTTLE_STREAK, DRAWDOWN_THROTTLE_FACTOR,
 )
-from performance import log_trade, add_followup_pending, log_basis, log_timing, log_market
+from performance import (
+    log_trade, add_followup_pending, log_basis, log_timing, log_market,
+    trailing_consecutive_losses,
+)
 from basis_collector import get_basis
 from error_monitor import setup_logging, log_error, log_info, log_warning
 
@@ -151,8 +155,18 @@ def morning_routine():
 
     # 신규 매수 가능 슬롯 및 가용 현금 계산
     new_slots = MAX_STOCK_COUNT - len(positions)
-    # 시장가 매수 슬리피지·수수료 감안해 가용현금의 95%만 사용
-    available_cash = int(get_available_cash() * 0.95)
+
+    # 소프트 스로틀 — 연속 손절 누적 시 신규 노출(투입자본) 축소. 슬롯은 유지(분산 보존),
+    # 익절 1건이면 연속카운트가 끊겨 자동 해제 → 반등 트레이드는 축소 크기로 계속 참여.
+    exposure_factor = 1.0
+    streak = trailing_consecutive_losses()
+    if DRAWDOWN_THROTTLE_STREAK > 0 and streak >= DRAWDOWN_THROTTLE_STREAK:
+        exposure_factor = DRAWDOWN_THROTTLE_FACTOR
+        send_message(f'⚠️ 연속 손절 {streak}회 — 신규 매수 노출 {int(DRAWDOWN_THROTTLE_FACTOR*100)}%로 축소(소프트 스로틀). 익절 1건 시 자동 해제.')
+        log_warning('morning_routine', f'소프트 스로틀 발동 (연속손절 {streak}회) — 가용현금 {DRAWDOWN_THROTTLE_FACTOR}배')
+
+    # 시장가 매수 슬리피지·수수료 감안해 가용현금의 95%만 사용 (스로틀 발동 시 추가 축소)
+    available_cash = int(get_available_cash() * 0.95 * exposure_factor)
 
     if new_slots <= 0:
         send_message(f'포지션이 가득 찼습니다 ({len(positions)}/{MAX_STOCK_COUNT}종목). 매수 보류.')

@@ -35,7 +35,8 @@
 
 - [x] MA20 / MA60 추세 필터 구현 (`kis_indicator.py`)
 - [x] KOSPI MA60 시장 추세 필터 — KODEX 200(069500) 기준 (`kis_indicator.py`)
-- [x] 장중 코스피 급락 가드 — KODEX200 당일 등락률 ≤ -`MARKET_CRASH_GUARD_RATE`(기본 1.0%)면 당일 신규매수 보류 (`main.py` morning_routine)
+- [x] 장중 코스피 급락 가드 — KODEX200 당일 등락률 ≤ -`MARKET_CRASH_GUARD_RATE`(기본 1.5%)면 당일 신규매수 보류 (`main.py` morning_routine)
+- [x] 소프트 스로틀 — 연속손절 ≥ `DRAWDOWN_THROTTLE_STREAK`(기본 3)이면 신규 매수 투입자본을 `DRAWDOWN_THROTTLE_FACTOR`(기본 0.5)배로 축소, 익절 1건 시 자동 해제 (`main.py` morning_routine) — 횡보·단기조정 대응
 - [x] 20일 모멘텀 스코어 계산 (`kis_momentum.py`)
 - [x] 네이버 증권 테마 동적 크롤링 (`naver_theme.py`)
   - [x] 3단계 방어 (크롤링 → 캐시 → 하드코딩 폴백)

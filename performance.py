@@ -80,6 +80,29 @@ def log_basis(data: dict):
         ])
 
 
+def trailing_consecutive_losses() -> int:
+    """trades.csv 끝에서부터 연속된 손실(profit_rate<=0) 거래 수 — 소프트 스로틀용.
+    익절 1건을 만나면 즉시 0으로 끊겨, 승리 시 스로틀이 자동 해제된다.
+    """
+    if not os.path.exists(TRADE_LOG):
+        return 0
+    try:
+        with open(TRADE_LOG, 'r', encoding='utf-8', newline='') as f:
+            rows = list(csv.DictReader(f))
+    except Exception:
+        return 0
+    streak = 0
+    for r in reversed(rows):
+        try:
+            if float(r['profit_rate']) <= 0:
+                streak += 1
+            else:
+                break
+        except (ValueError, KeyError, TypeError):
+            break
+    return streak
+
+
 def log_market(change_rate: float, threshold: float):
     """매일 아침 KODEX200 당일 등락률 스냅샷 기록 — 급락 가드 임계값 보정용.
     change_rate: KODEX200 당일 등락률(%), threshold: 현재 가드 임계값(%).
