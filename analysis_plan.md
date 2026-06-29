@@ -295,3 +295,47 @@ print(m.groupby('sec_bin')['profit_rate'].agg(['mean', 'count']))
 
 ### 기록 원칙 (이번 점검에서 확립)
 보호장치(리스크↓)는 모자란 근거로도 추가하나, 제약 완화(리스크↑)는 노이즈로 하지 않는다. 가드 신설과 BB%B 유지의 비대칭은 이 원칙에 따른 의도적 판단.
+
+---
+
+## 10. 낙폭과대 반등(평균회귀) 엣지 검증 — rejected_followup 기반 (신규, 2026-06-25)
+
+> 배경. 현 시스템은 모멘텀 추종이라 '얻어맞은 종목의 기술적 반등'을 구조적으로 못 잡는다(20일 모멘텀·MA20>MA60·BB%B 필터에서 탈락). 사례 검증(06-11 −6.8% → 06-12 +12.6%): 주도주 반등(SK하이닉스 +15%)은 잡았으나, 낙폭과대 종목 반등은 못 잡음. **새 전략(종가/평균회귀 진입)을 만들기 전에, 그 반등에 실제 엣지가 있는지부터 데이터로 검증한다.** 없으면 현 모멘텀 일변도 유지가 옳다.
+
+### 선행 조건
+- rejected_followup.csv 30행+ (d3 채워진 것) **그리고** 폭락일(지수 -2% 이하) 3일+ 포함.
+
+### 데이터 조인 (추가 수집 불필요)
+```python
+import pandas as pd
+rej = pd.read_csv('rejected_followup.csv')          # 미진입 후보 사후성과
+sig = pd.read_csv('signal_log.csv')                 # 후보의 momentum·bb_pct·is_uptrend
+mkt = pd.read_csv('market_log.csv')                 # 분당 지수 → 일자별 당일 등락률
+# 또는 basis_log의 kospi200_spot 전일대비(노이즈 주의)
+
+# 탈락 종목에 진입시점 피처 결합 (code + signal_date = date)
+m = rej.merge(sig[['date','code','momentum','bb_pct','is_uptrend']],
+              left_on=['code','signal_date'], right_on=['date','code'], how='left')
+
+# 그날이 폭락일이었는지 플래그 (market_log 당일 최저 등락률 등으로)
+day_chg = mkt.groupby('date')['kodex200_change_rate'].min().rename('idx_min')  # 당일 장중 최저
+m = m.merge(day_chg, left_on='signal_date', right_index=True, how='left')
+```
+
+### 검증 질문
+1. **낙폭과대 = 반등?** bb_pct 낮은(과매도) 탈락 종목의 d3/d5 평균 수익률이 양(+)인가.
+   ```python
+   m['oversold'] = m['bb_pct'] < 0.3
+   print(m.groupby('oversold')[['d3_rate','d5_rate']].agg(['mean','median','size']))
+   ```
+2. **폭락일 탈락 → 익일 반등?** idx_min ≤ -2% 인 날 탈락한 종목의 d3가 양인가.
+   ```python
+   m['crash_day'] = m['idx_min'] <= -2
+   print(m.groupby('crash_day')['d3_rate'].agg(['mean', lambda x:(x>0).mean(), 'size']))
+   ```
+3. **선정 vs 탈락 비교.** reason_not_bought='not_selected'(필터 탈락)가 selected보다 사후성과가 정말 나쁜가 → 필터가 일을 하는가.
+
+### 판단 기준 → 액션
+- 과매도/폭락일 탈락 종목 d3 평균이 **유의미하게 양(+)이고 적중률 높음** → 평균회귀 반등 엣지 존재. **별도 진입(예: 폭락 익일, 과매도 낙폭과대 종목 한정) 설계 검토.** 단 데드캣 바운스 위험 → 타이트한 손절 동반.
+- **차이 없거나 음(−)** → 반등은 노이즈/주도주 한정. **현 모멘텀 일변도 유지**(rejected_followup가 '필터가 옳다'를 입증).
+- 어느 쪽이든 결과를 context-notes.md·PROGRESS.md에 기록.

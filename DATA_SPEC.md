@@ -114,6 +114,7 @@ code, name, sector, signal_date, signal_price, reason_not_bought(not_selected/se
 | bb_pct 30건 | BB%B 0.85 페널티 완화 여부 | 2-1 |
 | market_log 2~3주 | 급락 가드 레벨 vs 기울기 재보정 | 1-5 |
 | 스로틀 발동 10회+ | exposure_factor=0.5 vs 1.0 성과 비교 | 2-4 |
+| rejected_followup 30행+ & 폭락일 3+ | **낙폭과대 반등 엣지 검증**(평균회귀 진입 도입 여부) | analysis_plan #10 |
 | basis 2·3개월 | slope·VKOSPI 필터 | 1-6 |
 | 손절 30건+ | 휩쏘율 30%+ 지속 시 캔들확인 강화 | 2-3 |
 | 하락장 표본 확보 | 알파 vs 베타 분리(실전 전환 핵심) | 2-4 |
