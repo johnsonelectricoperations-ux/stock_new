@@ -171,6 +171,18 @@ def get_leading_sector_signals(top_sectors: int = 3, max_stocks: int = 4, save_l
     # 최종 선정: 눌림목/정상(BB%B ≤ 0.85) 우선, 그 안에서 모멘텀 순
     # 과열 근접(0.85~0.95) 종목은 정상 종목으로 슬롯이 안 찰 때만 보충 선정
     candidates.sort(key=lambda x: (x['bb_pct'] > BB_PCT_PREFER, -x['momentum']))
+
+    # 테마당 1종목 제한 (본선+차선 통틀어) — 같은 날 동일 테마 동반 진입이 동반손절로 직결된
+    # 실증(06-05 고속버스 2종, 06-19 MLCC 2종) 반영. 테마가 곧 베팅 단위이므로 슬롯을 독립시킨다.
+    seen_sectors = set()
+    deduped = []
+    for c in candidates:
+        if c['sector'] in seen_sectors:
+            continue
+        seen_sectors.add(c['sector'])
+        deduped.append(c)
+    candidates = deduped
+
     signals = candidates[:max_stocks]
 
     # scan_records selected 플래그 갱신 (실제 선정된 상위 종목만 — 차선 후보는 제외)

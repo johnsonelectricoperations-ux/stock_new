@@ -368,12 +368,13 @@ def _check_dip_entry(code: str, relaxed: bool = False) -> bool:
     """분봉 진입 조건 확인.
     - 일반(09:30 이전): 현재가 > 직전 1분봉 고가 AND > 5분 MA (눌림목 돌파)
     - 완화(09:30 이후): 현재가 > 5분 MA만 확인 (고가 돌파 조건 제외)
-    데이터 부족 or API 실패 시 True 반환 (즉시 진입)
+    데이터 부족 or API 실패 시 False 반환 (다음 분 재확인 — 확인 불가 상태에서 매수하지 않음.
+    10:00 데드라인이 있어 장애 지속 시 그날 진입 포기로 수렴)
     """
     try:
         candles = get_minute_candles(code, count=10)
         if len(candles) < 6:
-            return True
+            return False
         current   = candles[0]['close']
         prev_high = candles[1]['high']
         ma5       = sum(c['close'] for c in candles[1:6]) / 5
@@ -381,7 +382,7 @@ def _check_dip_entry(code: str, relaxed: bool = False) -> bool:
             return current > ma5          # 09:30 이후: MA5 위에 있으면 진입
         return current > prev_high and current > ma5
     except Exception:
-        return True
+        return False
 
 
 def _get_candle_sell_info(code: str) -> dict | None:
@@ -537,7 +538,6 @@ def monitor_positions():
             pos = positions[code]
             info = get_current_price(code)
             price = info['price']
-            _pos_fail_streak.pop(code, None)  # 조회 성공 — 실패 카운트 리셋
             entry = pos['entry_price']
             rate  = (price - entry) / entry
 
@@ -548,7 +548,7 @@ def monitor_positions():
                 positions[code]['min_price'] = price
             peak = positions[code]['peak_price']
 
-            # ── 긴급 손절: -15% 이상 → 캔들 확인 없이 즉시 매도
+            # ── 긴급 손절: EMERGENCY_STOP_RATE(-8%) 이상 → 캔들 확인 없이 즉시 매도
             if rate <= -EMERGENCY_STOP_RATE:
                 _do_sell(code, pos['qty'], price, f'긴급손절({rate*100:+.1f}%)',
                          trigger_price=int(entry * (1 - EMERGENCY_STOP_RATE)))
@@ -626,6 +626,10 @@ def monitor_positions():
                 _do_sell(code, pos['qty'], price, reason, trigger_price=trig)
                 del positions[code]
 
+            # 사이클 전체(조회+매도판단+주문) 성공 시에만 실패 카운트 리셋.
+            # 조회 성공 직후 리셋하면 이후 단계(매도 등) 반복 실패가 영원히 '연속 1회'로 남아
+            # 연속실패 알림이 발동하지 않는다 (06-22~24 005930 사흘 마비 때 원인 은폐).
+            _pos_fail_streak.pop(code, None)
             time.sleep(0.3)
         except Exception as e:
             cycle_fail_count += 1
@@ -637,7 +641,7 @@ def monitor_positions():
                 log_error(f'monitor_positions:{code}', e)
             else:
                 log_warning('monitor_positions',
-                            f'{code} {type(e).__name__} (연속 {n}회) — 파일기록만, 다음 사이클 재조회')
+                            f'{code} {type(e).__name__}: {e} (연속 {n}회) — 파일기록만, 다음 사이클 재조회')
 
     # 사라진 종목(매도 완료)의 실패 카운트 정리
     for c in list(_pos_fail_streak):

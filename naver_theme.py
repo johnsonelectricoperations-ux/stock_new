@@ -121,11 +121,22 @@ def _save_cache(themes: dict):
         )
 
 
+CACHE_MAX_AGE_DAYS = 4  # 캐시 유효기간 (주말·연휴 감안) — 초과 시 폐기
+
+
 def _load_cache() -> dict | None:
     if not os.path.exists(THEME_CACHE):
         return None
     with open(THEME_CACHE, 'r', encoding='utf-8') as f:
-        return json.load(f).get('themes')
+        data = json.load(f)
+    # 날짜 검증 — 크롤링이 여러 날 연속 실패하면 수주 전 테마로 매매할 수 있으므로 오래된 캐시는 버린다
+    try:
+        age = (datetime.now() - datetime.strptime(data.get('date', ''), '%Y-%m-%d')).days
+    except ValueError:
+        return None
+    if age > CACHE_MAX_AGE_DAYS:
+        return None
+    return data.get('themes')
 
 
 def _notify(msg: str):
