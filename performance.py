@@ -14,6 +14,7 @@ FOLLOWUP_LOG = 'followup_log.csv'
 FOLLOWUP_PENDING = 'config/followup_pending.json'
 REJECTED_LOG = 'rejected_followup.csv'              # 미진입 후보 사후추적 (필터·가드·스로틀 효과검증)
 REJECTED_PENDING = 'config/rejected_pending.json'
+SHADOW_LOG = 'shadow_selection.csv'                 # 당일 장초반 순위 기반 섀도 선정 기록 (매매 무관)
 
 _BASIS_HEADERS = ['date', 'time', 'kospi200_spot', 'kospi200_futures', 'basis', 'basis_pct', 'basis_slope', 'vkospi']
 _TIMING_HEADERS = ['date', 'code', 'name', 'check_time', 'dip_met', 'action']
@@ -48,6 +49,11 @@ _REJECTED_HEADERS = [
     'code', 'name', 'sector', 'signal_date', 'signal_price',
     'reason_not_bought', 'selected', 'passed_filters',
     'd3_price', 'd3_rate', 'd5_price', 'd5_rate', 'd10_price', 'd10_rate',
+]
+_SHADOW_HEADERS = [
+    'date', 'time', 'code', 'name', 'rank_source', 'change_rate', 'signal_price',
+    'momentum', 'bb_pct', 'volume_ratio', 'is_uptrend', 'volume_ok', 'foreign_ok',
+    'passed_filters', 'shadow_selected',
 ]
 
 
@@ -399,6 +405,49 @@ def _write_rejected_log(item: dict):
             item['d5'],  rate(item['d5']),
             item['d10'], rate(item['d10']),
         ])
+
+
+# ─── 섀도 선정 기록 (당일 장초반 순위 기반 — 매매 무관, 선정방식 A/B 비교용) ──────
+# 목적. '전날 테마 크롤 선정(실매매) vs 당일 09:20 순위 선정(섀도)'을 사후성과로 비교해
+# 선정 방식 전환 여부를 데이터로 결정한다. 사후추적은 rejected 파이프라인을 재사용한다.
+
+def log_shadow_selection(records: list):
+    """섀도 스캔 전체(선정+탈락)를 shadow_selection.csv에 기록."""
+    exists = os.path.exists(SHADOW_LOG)
+    with open(SHADOW_LOG, 'a', newline='', encoding='utf-8') as f:
+        writer = csv.DictWriter(f, fieldnames=_SHADOW_HEADERS, extrasaction='ignore')
+        if not exists:
+            writer.writeheader()
+        for r in records:
+            writer.writerow(r)
+
+
+def seed_shadow_pending(picks: list, signal_date: str) -> int:
+    """섀도 선정 종목을 rejected 큐에 적재(reason_not_bought='shadow_intraday') —
+    기존 d3/d5/d10 추적·기록 파이프라인 재사용. 이미 큐에 있는 (code, date)는 건너뜀
+    (가격 추적은 사유와 무관하게 동일하므로 shadow_selection.csv와 조인해 분석)."""
+    pending = _load_rejected_pending()
+    seen = {(p['code'], p['signal_date']) for p in pending}
+    added = 0
+    for p in picks:
+        try:
+            sp = int(float(p.get('signal_price') or 0))
+        except (ValueError, TypeError):
+            sp = 0
+        if sp <= 0 or (p['code'], signal_date) in seen:
+            continue
+        pending.append({
+            'code': p['code'], 'name': p.get('name', ''), 'sector': p.get('sector', ''),
+            'signal_date': signal_date, 'signal_price': sp,
+            'reason_not_bought': 'shadow_intraday', 'selected': 'shadow',
+            'passed_filters': 'True',
+            'd3': None, 'd5': None, 'd10': None,
+        })
+        seen.add((p['code'], signal_date))
+        added += 1
+    if added:
+        _save_rejected_pending(pending)
+    return added
 
 
 # ─── 성과 리포트 ────────────────────────────────────────────────────────────

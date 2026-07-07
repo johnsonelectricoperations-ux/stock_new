@@ -64,7 +64,14 @@ data-export 브랜치의 06-25 19:30 스냅샷(trades 29 / signal 463 / timing 3
 - naver_theme.py: `_load_cache` 날짜 검증(4일 초과 폐기 — 기존엔 date 미확인으로 수주 전 캐시 매매 가능).
 - kis_sector.py: 테마당 1종목 제한(본선+차선 통틀어 dedup, 테마 부족 시 슬롯 공석 허용).
 - 과열 후순위(섹터모멘텀 50+/거래량비 2+)는 표본 부족으로 보류 — 두 스냅샷 연속 같은 방향이므로 40~50건에서 재검토.
-- 격리 테스트 15건 전부 통과 + py_compile. 상세 근거는 context-notes.md 07-07 항목. **배포 필요: `./scripts/deploy.sh claude/stock-trading-analysis-f24b28`.**
+- 격리 테스트 15건 전부 통과 + py_compile. 상세 근거는 context-notes.md 07-07 항목.
+
+**섀도 선정 파이프라인 구현(사용자 승인 "진행하자", 실전매매 대비).** 당일 09:20 순위 기반 선정을 기록만 하는 A/B 인프라 — '전날 테마 크롤 vs 당일 장초반' 선정 방식을 데이터로 비교 후 전환 결정.
+- `kis_rank.py` 신설: 실전 도메인 순위 API(상승률 FHPST01700000 + 거래대금 FHPST01710000, 모의 미지원), 별도 토큰캐시. 실전 전환 시 본 키 자동 폴백(이중 도메인 구조 = 실전 전환 기반).
+- morning_routine 09:20 직후 섀도 선정: 순위 풀 20종목에 기존 구조 필터 동일 적용 → shadow_selection.csv 기록 + rejected 큐 적재(reason='shadow_intraday', 기존 d3/d5/d10 파이프라인 재사용). try/except 격리 — 실패해도 본 매매 무영향. KIS_REAL_APP_KEY 미설정 시 조용히 비활성.
+- DATA_SPEC 1-9절·real_trading_transition.md 갱신, export_data.sh에 shadow_selection.csv 추가.
+- 격리 테스트 12건 + 기존 15건 회귀 전부 통과. ⚠️ 순위 API 파라미터는 공식 샘플 기준 — 첫 운영일 09:20 '섀도:' 로그로 실호출 검증 필요.
+- **사용자 작업: ① KIS Developers 실전 앱키 발급 ② 서버 .env에 `KIS_REAL_APP_KEY`/`KIS_REAL_APP_SECRET` 추가 ③ 배포 `./scripts/deploy.sh claude/stock-trading-analysis-f24b28`.**
 
 ### 2026-06-25 (Claude 세션) — 데이터 수집 정비 + 마스터 문서 DATA_SPEC.md
 

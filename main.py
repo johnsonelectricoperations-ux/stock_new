@@ -23,6 +23,7 @@ from config.settings import (
 from performance import (
     log_trade, add_followup_pending, log_basis, log_timing, log_market,
     trailing_consecutive_losses, seed_rejected_from_signal_log,
+    log_shadow_selection, seed_shadow_pending,
 )
 from basis_collector import get_basis
 from error_monitor import setup_logging, log_error, log_info, log_warning
@@ -102,6 +103,62 @@ def is_market_open():
     market_close = now.replace(hour=15, minute=30, second=0, microsecond=0)
     return market_open <= now <= market_close
 
+def _run_shadow_selection():
+    """섀도 선정 — 당일 09:20 순위(상승률+거래대금) 풀에 기존 구조 필터를 적용해 기록만 한다.
+    실매매(전날 테마 크롤 선정)와 무관하며, d3/d5/d10 사후성과로 '전날 vs 당일' 선정 방식을
+    비교하기 위한 데이터 수집. 실전 앱키(KIS_REAL_APP_KEY) 미설정이면 조용히 건너뜀."""
+    from kis_rank import get_intraday_leaders, is_rank_api_configured
+    if not is_rank_api_configured():
+        return
+    pool = get_intraday_leaders(top_n=20)
+    if not pool:
+        log_warning('shadow_selection', '순위 조회 빈 응답 — 오늘 섀도 선정 없음')
+        return
+    from kis_sector import _analyze_stock, BB_PCT_PREFER
+    from kis_foreign import is_foreign_buying
+    now = datetime.now()
+    records, candidates = [], []
+    for p in pool:
+        try:
+            r = _analyze_stock(p['code'])
+        except Exception:
+            r = None
+        time.sleep(0.2)
+        if not r:
+            continue
+        foreign_ok = False
+        passed = r['is_uptrend'] and r['volume_ok'] and not r['bb_overbought']
+        if passed:
+            try:
+                foreign_ok, _ = is_foreign_buying(p['code'])
+            except Exception:
+                foreign_ok = False
+            passed = foreign_ok
+        rec = {
+            'date': now.strftime('%Y-%m-%d'), 'time': now.strftime('%H:%M:%S'),
+            'code': p['code'], 'name': p['name'], 'rank_source': p['source'],
+            'change_rate': p['change_rate'],
+            'signal_price': p['price'] or r['signal_price'],
+            'momentum': r['momentum'], 'bb_pct': r['bb_pct'],
+            'volume_ratio': r['volume_ratio'], 'is_uptrend': r['is_uptrend'],
+            'volume_ok': r['volume_ok'], 'foreign_ok': foreign_ok,
+            'passed_filters': passed, 'shadow_selected': False,
+        }
+        records.append(rec)
+        if passed:
+            candidates.append(rec)
+    # 실선정과 같은 우선순위 (BB%B ≤0.85 우선, 모멘텀 내림차순)
+    candidates.sort(key=lambda x: (x['bb_pct'] > BB_PCT_PREFER, -x['momentum']))
+    picks = candidates[:MAX_STOCK_COUNT]
+    for p in picks:
+        p['shadow_selected'] = True
+    if records:
+        log_shadow_selection(records)
+    n_seed = seed_shadow_pending(picks, now.strftime('%Y-%m-%d'))
+    log_info('shadow_selection',
+             f'섀도: 풀 {len(pool)} → 분석 {len(records)} → 선정 {len(picks)} (추적 적재 {n_seed})')
+
+
 def morning_routine():
     global _last_heartbeat
     if not is_trading_day():
@@ -152,6 +209,13 @@ def morning_routine():
             log_warning('morning_routine', '베이시스 수집 실패 — KODEX 200 조회 불가')
     except Exception as e:
         log_error('morning_routine:basis_collector', e)
+
+    # 섀도 선정 (기록 전용, 매매 무관) — 실패해도 본 매매에 영향 없음. 약 10~15초 소요.
+    try:
+        _run_shadow_selection()
+    except Exception as e:
+        log_error('morning_routine:shadow_selection', e)
+    _last_heartbeat = time.time()
 
     # 신규 매수 가능 슬롯 및 가용 현금 계산
     new_slots = MAX_STOCK_COUNT - len(positions)

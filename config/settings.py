@@ -18,6 +18,12 @@ _account = os.getenv('KIS_ACCOUNT_NO', '').replace('-', '')
 KIS_CANO = _account[:8]
 KIS_ACNT_PRDT_CD = _account[8:] if len(_account) > 8 else os.getenv('KIS_ACNT_PRDT_CD', '01')
 
+# 실전 도메인 시세·순위 조회용 (순위분석 API는 모의투자 도메인 미지원 — 섀도 선정에 사용).
+# 모의투자 운영 중에도 조회는 실전 앱키로 하고, 실전 전환(KIS_IS_MOCK=false) 시 본 키로 폴백한다.
+KIS_REAL_BASE_URL = 'https://openapi.koreainvestment.com:9443'
+KIS_REAL_APP_KEY = os.getenv('KIS_REAL_APP_KEY', (KIS_APP_KEY or '') if not KIS_IS_MOCK else '')
+KIS_REAL_APP_SECRET = os.getenv('KIS_REAL_APP_SECRET', (KIS_APP_SECRET or '') if not KIS_IS_MOCK else '')
+
 # 운용 설정
 TOTAL_BUDGET = int(os.getenv('TOTAL_BUDGET', '10000000'))
 MAX_STOCK_COUNT = int(os.getenv('MAX_STOCK_COUNT', '4'))      # 전체 통과 종목 중 모멘텀 상위 4종목

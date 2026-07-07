@@ -62,6 +62,13 @@ code, name, sector, signal_date, signal_price, reason_not_bought(not_selected/se
 ### 1-8. error.log — 운영 에러/경고
 - 용도. 서버 안정성, 가드·스로틀 발동 로그(log_warning) 추적.
 
+### 1-9. shadow_selection.csv — 당일 장초반 섀도 선정 (매매 무관) ⬅신규 2026-07-07
+date, time, code, name, rank_source(fluctuation/trading_value), change_rate, signal_price, momentum, bb_pct, volume_ratio, is_uptrend, volume_ok, foreign_ok, passed_filters, shadow_selected
+- 용도. **'전날 테마 크롤 선정(실매매) vs 당일 09:20 순위 기반 선정(섀도)' A/B 비교.** 09:20에 KIS 실전 도메인 순위 API(상승률 FHPST01700000 + 거래대금 FHPST01710000) 풀에 기존 구조 필터를 그대로 적용해 기록만 한다.
+- 사후추적. 섀도 선정 종목은 `rejected_pending` 큐에 `reason_not_bought='shadow_intraday'`로 적재되어 기존 d3/d5/d10 파이프라인이 추적 → rejected_followup.csv에 기록됨. 분석 시 shadow_selection.csv(선정 목록)와 rejected_followup.csv(가격)를 code+date로 조인.
+- 전제. 서버 .env에 `KIS_REAL_APP_KEY`/`KIS_REAL_APP_SECRET`(실전 앱키) 필요 — 순위 API는 모의 도메인 미지원. 미설정 시 섀도만 조용히 비활성(매매 무영향).
+- 판단 기준. 2~3주 축적 후 '섀도 선정 d3/d5 성과 vs 실선정 거래 성과' 비교 — 섀도가 일관되게 우위면 선정 방식 전환 검토.
+
 ---
 
 ## 2. 전략·파라미터 분석 매핑

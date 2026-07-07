@@ -31,6 +31,9 @@ TOTAL_BUDGET=실제투자금액
 - KIS Developers에서 실전 앱키는 모의투자 앱키와 별도로 발급해야 함.
 - 계좌번호 형식: `12345678-01` (하이픈 포함해도 코드가 자동 처리함).
 - TOTAL_BUDGET은 실제 입금한 예수금 기준으로 설정.
+- (2026-07-07 추가) 섀도 선정용 `KIS_REAL_APP_KEY`/`KIS_REAL_APP_SECRET`는 모의 운영 중에만 별도 필요.
+  실전 전환(KIS_IS_MOCK=false) 후에는 본 키(KIS_APP_KEY)로 자동 폴백하므로 .env에서 제거해도 된다.
+  순위 조회 토큰 캐시는 `config/token_cache_real.json`(별도 파일)이며 주문 토큰과 무관.
 
 ---
 
