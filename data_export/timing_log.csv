@@ -386,3 +386,31 @@ date,code,name,check_time,dip_met,action
 2026-06-25,000660,SK하이닉스,09:26:05,False,waiting
 2026-06-25,000660,SK하이닉스,09:27:06,False,waiting
 2026-06-25,000660,SK하이닉스,09:28:08,True,bought_reserve
+2026-06-30,240810,원익IPS,09:21:04,False,waiting
+2026-06-30,095610,테스,09:21:05,False,waiting
+2026-06-30,240810,원익IPS,09:22:05,False,waiting
+2026-06-30,095610,테스,09:22:08,False,waiting
+2026-06-30,240810,원익IPS,09:23:08,False,waiting
+2026-06-30,095610,테스,09:23:11,False,waiting
+2026-06-30,240810,원익IPS,09:24:12,False,waiting
+2026-06-30,095610,테스,09:24:12,False,waiting
+2026-06-30,240810,원익IPS,09:25:13,False,waiting
+2026-06-30,095610,테스,09:25:14,False,waiting
+2026-06-30,240810,원익IPS,09:26:16,False,waiting
+2026-06-30,095610,테스,09:26:17,False,waiting
+2026-06-30,240810,원익IPS,09:27:17,False,waiting
+2026-06-30,095610,테스,09:27:18,False,waiting
+2026-06-30,240810,원익IPS,09:28:18,False,waiting
+2026-06-30,095610,테스,09:28:20,False,waiting
+2026-06-30,240810,원익IPS,09:29:21,False,waiting
+2026-06-30,095610,테스,09:29:21,False,waiting
+2026-06-30,240810,원익IPS,09:30:25,False,waiting
+2026-06-30,095610,테스,09:30:27,False,waiting
+2026-06-30,240810,원익IPS,09:31:27,False,waiting
+2026-06-30,095610,테스,09:31:28,False,waiting
+2026-06-30,240810,원익IPS,09:32:30,False,waiting
+2026-06-30,095610,테스,09:32:30,False,waiting
+2026-06-30,240810,원익IPS,09:33:38,True,bought_relaxed
+2026-06-30,095610,테스,09:33:48,True,bought_relaxed
+2026-07-01,048550,SM C&C,09:20:53,False,waiting
+2026-07-01,048550,SM C&C,09:22:01,True,bought_dip
