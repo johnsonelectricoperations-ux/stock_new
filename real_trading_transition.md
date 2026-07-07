@@ -1,39 +1,47 @@
 # 실전 투자 전환 가이드
 
 > 모의투자 검증 완료 후 이 문서 순서대로 진행할 것.
-> 마지막 업데이트: 2026-05-18 (2차)
+> 마지막 업데이트: 2026-07-07 (3차 — 코드 현행화 반영. 잔고조회·수수료는 자동 처리로 이동,
+> 이중 키 구조(KIS_REAL_*) 반영, 달성 현황 추가)
 
 ---
 
 ## 전환 전 필수 달성 조건
 
-| 지표 | 최소 기준 | 확인 방법 |
-|------|-----------|-----------|
-| 거래 건수 | 30건 이상 | `/report` |
-| 승률 | 45% 이상 | `/report` |
-| 손익비 | 1.5 이상 | `/report` |
-| MDD | -20% 이내 | `/report` |
-| 안정 운영 기간 | 2주 이상 에러 없이 | `error.log` |
+| 지표 | 최소 기준 | 확인 방법 | 현황 (2026-07-07, 33건 기준) |
+|------|-----------|-----------|------------------------------|
+| 거래 건수 | 30건 이상 | `/report` | ✅ 33건 |
+| 승률 | 45% 이상 | `/report` | ❌ 42.4% |
+| 손익비 | 1.5 이상 | `/report` | ✅ 2.21 |
+| MDD | -20% 이내 | `/report` | ✅ -18% (경계) |
+| 안정 운영 기간 | 2주 이상 에러 없이 | `error.log` | ❌ 06-22~24 모니터링 마비 → 07-07 수정 배포 이후부터 재카운트 |
+
+**판단 보조 (정량 기준 외).** 현재 수익이 5월 랠리에 집중(6월 조정은 -91만)이라, 7월 조정 국면
+통과 성적(방어 유지 + 회복 시 재진입 품질)까지 보고 전환하는 것을 권장. 섀도 선정(전날 vs 당일)
+비교 결과도 같은 시기에 나옴.
 
 ---
 
 ## 1. .env 수정 (필수)
 
+실전 앱키는 이미 섀도 선정용으로 `.env`의 `KIS_REAL_APP_KEY`/`KIS_REAL_APP_SECRET`에 들어 있다
+(2026-07 설정). 전환은 그 값을 본 키로 올리는 것.
+
 ```
 KIS_IS_MOCK=false
-KIS_APP_KEY=실전앱키
-KIS_APP_SECRET=실전앱시크릿
-KIS_ACCOUNT_NO=실전계좌번호-01
+KIS_APP_KEY=실전앱키          # KIS_REAL_APP_KEY와 같은 값으로 교체
+KIS_APP_SECRET=실전앱시크릿    # KIS_REAL_APP_SECRET와 같은 값으로 교체
+KIS_ACCOUNT_NO=실전계좌번호-01  # 모의 계좌 → 실전 계좌로 반드시 교체
 TOTAL_BUDGET=실제투자금액
 ```
 
 **주의사항.**
-- KIS Developers에서 실전 앱키는 모의투자 앱키와 별도로 발급해야 함.
-- 계좌번호 형식: `12345678-01` (하이픈 포함해도 코드가 자동 처리함).
+- 계좌번호 형식: `12345678-01` (하이픈 포함해도 코드가 자동 처리함). **계좌번호 교체를 잊으면
+  실전 키로 모의 계좌에 주문하다 전부 거부되므로 최우선 확인.**
 - TOTAL_BUDGET은 실제 입금한 예수금 기준으로 설정.
-- (2026-07-07 추가) 섀도 선정용 `KIS_REAL_APP_KEY`/`KIS_REAL_APP_SECRET`는 모의 운영 중에만 별도 필요.
-  실전 전환(KIS_IS_MOCK=false) 후에는 본 키(KIS_APP_KEY)로 자동 폴백하므로 .env에서 제거해도 된다.
-  순위 조회 토큰 캐시는 `config/token_cache_real.json`(별도 파일)이며 주문 토큰과 무관.
+- `KIS_REAL_APP_KEY`/`KIS_REAL_APP_SECRET`는 전환 후 .env에서 지워도 된다(본 키로 자동 폴백,
+  config/settings.py). 남겨둬도 무해.
+- 순위 조회 토큰 캐시 `config/token_cache_real.json`은 실전 키 그대로면 삭제 불필요.
 
 ---
 
@@ -47,93 +55,29 @@ rm ~/stock-bot/config/token_cache.json
 
 ---
 
-## 3. kis_balance.py 활성화 (중요)
+## 3. 잔고 조회 활성화 (이미 처리됨 — 2026-06 반영)
 
-현재 가용현금 계산이 `settings.py` 고정값 기반. 실전에서는 실제 예수금 조회로 교체해야 함.
+가용현금은 이미 KIS 예수금 조회 우선으로 동작한다. 코드 수정 불필요.
 
-> **참고**: 2026-05-18 모의투자에서 kis_balance.py 정상 작동 확인됨 (포트 29443 수정 후). 잔고 조회 API 자체는 문제없음.
-
-### main.py 수정
-
-**현재 코드 (main.py 상단 get_available_cash 함수).**
-```python
-def get_available_cash():
-    total = TOTAL_BUDGET + realized_pnl
-    invested = sum(p['entry_price'] * p['qty'] for p in positions.values())
-    return max(0, total - invested)
-```
-
-**실전 전환 후 (실제 예수금 반영).**
-```python
-from kis_balance import get_balance
-
-def get_available_cash():
-    try:
-        return get_balance()['cash']
-    except Exception:
-        # API 실패 시 기존 계산 방식으로 폴백
-        total = TOTAL_BUDGET + realized_pnl
-        invested = sum(p['entry_price'] * p['qty'] for p in positions.values())
-        return max(0, total - invested)
-```
-
-**morning_routine() 매수 전 예수금 확인 추가.**
-```python
-# morning_routine() 안, 매수 직전에 추가
-available = get_available_cash()
-if available < 500000:  # 50만원 미만이면 매수 중단
-    send_message('예수금 부족으로 오늘 매수 건너뜀.')
-    return
-```
-
-**daily_report() 실제 잔고 반영.**
-```python
-# daily_report() 안에서 잔고 조회
-try:
-    bal = get_balance()
-    cash = bal['cash']
-    total_eval = bal['total_eval']
-except Exception:
-    cash = get_available_cash()
-    total_eval = None
-```
+- `main.py get_available_cash()` — `kis_balance.get_balance()['cash']` 우선, 실패 시 메모리
+  계산(TOTAL_BUDGET + 실현손익 - 투자중) 폴백.
+- `_execute_buy()` — 매수가능조회(`get_orderable_cash`, VTTC8908R→실전 TTTC8908R 자동)로
+  T+2 미결제 대금 반영해 수량 상한. 조회 실패 시 미적용 폴백.
+- 예수금 50만원 미만이면 매수 보류 로직도 이미 포함(morning_routine).
+- ⚠️ 실전 첫 매수 때 응답 필드(nrcvb_buy_amt 등)가 실전 서버에서도 같은지 로그로 확인할 것
+  (2026-06-16 기록 — 다르면 폴백되어 무해하나 상한 효과 없음).
 
 ---
 
-## 4. 수수료/세금 반영 (중요)
+## 4. 수수료/세금 반영 (이미 처리됨 — 자동 분기)
 
-현재 profit 계산에 수수료/세금 미반영. 실전에서는 실제 수익이 더 작게 잡힘.
+`_do_sell()`이 `KIS_IS_MOCK=false`면 자동으로 비용을 차감해 profit/profit_rate를 기록한다.
+코드 수정 불필요.
 
-### 적용 비율
-- 증권거래세: 0.18% (매도 시 자동 징수)
-- 수수료: 약 0.015% (증권사마다 다름, 한국투자증권 기준)
-- 실질 매도 비용: 약 **0.20%** (세금 + 수수료 합산)
-
-### performance.py 수정 (log_trade 함수)
-
-```python
-# 현재
-profit = round((exit_price - entry_price) * qty)
-profit_rate = round((exit_price - entry_price) / entry_price * 100, 2)
-
-# 실전 전환 후
-SELL_FEE_RATE = 0.0020  # 증권거래세 0.18% + 수수료 0.02%
-fee = round(exit_price * qty * SELL_FEE_RATE)
-profit = round((exit_price - entry_price) * qty) - fee
-profit_rate = round(profit / (entry_price * qty) * 100, 2)
-```
-
-### main.py 수정 (_do_sell 함수)
-
-```python
-# 현재
-profit = round((exit_price - entry_price) * qty)
-
-# 실전 전환 후
-SELL_FEE_RATE = 0.0020
-fee = round(exit_price * qty * SELL_FEE_RATE)
-profit = round((exit_price - entry_price) * qty) - fee
-```
+- 적용 값(config/settings.py, .env로 오버라이드 가능): `SELL_TAX_RATE=0.0015`(증권거래세 0.15%,
+  매도 시), `COMMISSION_RATE=0.00015`(수수료 0.015%, 매수·매도 각각).
+- 전환 시점의 실제 세율·수수료율이 다르면 .env에서 값만 조정 (2026년 코스피/코스닥 세율 확인).
+- 모의투자 기록(is_mock=True)은 비용 미반영이므로, 실전 후 성과 분석 시 is_mock으로 분리할 것.
 
 ---
 
@@ -162,13 +106,18 @@ profit = round((exit_price - entry_price) * qty) - fee
 ## 7. 설정값 재검토
 
 ```
-# .env 또는 config/settings.py 기본값 검토
+# .env 또는 config/settings.py 기본값 검토 (아래는 2026-07-07 현재 실제 기본값)
 
-TOTAL_BUDGET        = 실제 투자금 (예: 10000000)
-MAX_STOCK_COUNT     = 4  # 투자금 규모 확인 (종목당 최소 100만원 이상)
-STOP_LOSS_RATE      = 0.10  # 모의투자 결과 기반 튜닝
-TRAIL_STOP_RATE     = 0.12  # 모의투자 결과 기반 튜닝
-FOREIGN_BUY_THRESHOLD = 0   # 모의투자 결과 기반 상향 조정 검토
+TOTAL_BUDGET            = 실제 투자금 (예: 10000000)
+MAX_STOCK_COUNT         = 4      # 투자금 규모 확인 (종목당 최소 100만원 이상)
+STOP_LOSS_RATE          = 0.05   # -5% (33건 검증: 휩쏘 27%로 유지 확정)
+EMERGENCY_STOP_RATE     = 0.08   # -8% 즉시 손절
+TRAIL_STOP_RATE         = 0.12
+MOMENTUM_EXIT_RATE      = 0.10
+MARKET_CRASH_GUARD_RATE = 1.5    # 장중 지수 -1.5% 급락 가드 (0=비활성)
+DRAWDOWN_THROTTLE_STREAK= 3      # 연속손절 3회 → 투입자본 50% 축소
+DRAWDOWN_THROTTLE_FACTOR= 0.5
+FOREIGN_BUY_THRESHOLD   = 0
 ```
 
 **MAX_STOCK_COUNT 기준.**
@@ -323,23 +272,26 @@ tail -f ~/stock-bot/error.log
 
 ## 체크리스트 요약
 
-**전환 전 달성 조건.**
-- [ ] 모의투자 30건 이상, 승률 45%+, 손익비 1.5+, 2주 안정 운영 확인
+**전환 전 달성 조건 (2026-07-07 현황: 승률·안정 2주 미충족).**
+- [ ] 모의투자 30건 이상 ✅(33건), 승률 45%+ ❌(42.4%), 손익비 1.5+ ✅(2.21), MDD -20% 이내 ✅(-18%)
+- [ ] 07-07 견고성 수정 배포 이후 2주 무사고 운영
+- [ ] (권장) 7월 조정 국면 통과 성적 + 섀도 선정 비교 결과 확인
 
-**코드 수정 필요 (수동).**
-- [ ] .env — KIS_IS_MOCK=false, 실전 앱키/시크릿/계좌번호/예산 입력
-- [ ] token_cache.json 삭제
-- [ ] kis_balance.py 활성화 (main.py get_available_cash 교체, 섹션 3 참고)
-- [ ] 수수료/세금 반영 (performance.py, main.py profit 계산, 섹션 4 참고)
-- [ ] MAX_STOCK_COUNT 투자금 규모에 맞게 재확인
-- [ ] 만기일 필터 추가 (morning_routine, 섹션 8 참고)
+**수동 작업 (전환 당일).**
+- [ ] .env — KIS_IS_MOCK=false, KIS_APP_KEY/SECRET을 실전 키(=KIS_REAL_* 값)로, **계좌번호 실전으로**, 예산 입력
+- [ ] token_cache.json 삭제 (token_cache_real.json은 유지 가능)
+- [ ] MAX_STOCK_COUNT·비용률(SELL_TAX_RATE 등) 투자금·당시 세율에 맞게 재확인
+- [ ] 만기일 필터 추가 여부 결정 (morning_routine, 섹션 8 참고 — 아직 미구현)
 
 **자동 처리됨 (수정 불필요).**
+- [x] 잔고·가용현금 — KIS 예수금 조회 우선 + 매수가능조회 상한 (섹션 3, 2026-06 반영)
+- [x] 수수료/세금 — KIS_IS_MOCK=false 시 profit 자동 차감 (섹션 4)
 - [x] 포트 설정 — KIS_IS_MOCK=false 시 주문·잔고 API 모두 9443 자동 적용
 - [x] SSL 검증 — KIS_IS_MOCK=false 시 자동 활성화
 - [x] custtype 헤더 — 이미 포함됨
 - [x] 매수 예산 5% 안전마진 — 이미 적용됨
 - [x] 재시작 후 보유 종목 자동 복구 — KIS 잔고 API 기반, /register 수동 입력 불필요
+- [x] 섀도 선정 — 실전 키 자동 폴백으로 계속 동작 (kis_rank.py)
 - [x] 베이시스/VKOSPI 수집 — 네이버 API로 자동 수집 중 (basis_log.csv)
 - [x] 웹 대시보드 — http://서버IP:5000 (Flask, 포트 5000 보안 그룹 열어둬야 함)
 - [x] 텔레그램 /snapshot — 대시보드 이미지 전송
@@ -348,4 +300,5 @@ tail -f ~/stock-bot/error.log
 **전환 당일.**
 - [ ] diagnose_order.py 로 주문 API 정상 확인 (장 시간 중)
 - [ ] 소액 수동 매수/매도 테스트 후 본격 자동매매 시작
-- [ ] 재시작 후 kis_balance.py 실행해 잔고 확인
+- [ ] 재시작 후 /balance 로 실전 잔고 확인
+- [ ] 첫 자동 매수 때 매수가능조회 응답 필드 정상 여부 로그 확인 (섹션 3 ⚠️)
