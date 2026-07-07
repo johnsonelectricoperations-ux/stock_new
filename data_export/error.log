@@ -11235,3 +11235,7 @@ NoneType: None
 2026-06-24 15:25:36 [WARNING] [monitor_positions] 005930 Exception (연속 1회) — 파일기록만, 다음 사이클 재조회
 2026-06-24 15:27:37 [WARNING] [monitor_positions] 005930 Exception (연속 1회) — 파일기록만, 다음 사이클 재조회
 2026-06-24 15:29:38 [WARNING] [monitor_positions] 005930 Exception (연속 1회) — 파일기록만, 다음 사이클 재조회
+2026-06-26 09:20:01 [WARNING] [morning_routine] 소프트 스로틀 발동 (연속손절 6회) — 가용현금 0.5배
+2026-06-29 09:20:01 [WARNING] [morning_routine] 소프트 스로틀 발동 (연속손절 7회) — 가용현금 0.5배
+2026-06-30 09:20:01 [WARNING] [morning_routine] 소프트 스로틀 발동 (연속손절 7회) — 가용현금 0.5배
+2026-07-01 09:20:01 [WARNING] [morning_routine] 소프트 스로틀 발동 (연속손절 8회) — 가용현금 0.5배
