@@ -260,11 +260,13 @@ def morning_routine():
         send_message('오늘 매수 신호 없음. 매매 보류.')
         return
 
-    # 종목당 예산 배분 기준은 본선 종목 수 고정 — 차선 대체 시에도 같은 슬롯 예산 유지
-    total_signals = len(primary)
-    per_stock_budget = available_cash // total_signals
+    # 종목당 예산은 '빈 슬롯 수'로 분할 (신호 수 아님) — 신호 수로 나누면 신호 1개인 날
+    # 가용현금 전액이 한 종목에 몰린다 (06-22·24·25 각 800~910만 집중이 최대 손실 1~3위).
+    # 신호가 슬롯보다 적으면 남는 예산은 현금 보유. 차선 대체 시에도 같은 슬롯 예산 유지.
+    budget_slots = new_slots
+    per_stock_budget = available_cash // budget_slots
     msg_lines = [
-        f'확인 매수 신호 {total_signals}종목 — 눌림목 진입 대기 (차선 후보 {len(reserves)}종목 대기)',
+        f'확인 매수 신호 {len(primary)}종목 — 눌림목 진입 대기 (차선 후보 {len(reserves)}종목 대기)',
         f'가용현금: {available_cash:,}원 | 종목당: {per_stock_budget:,}원',
         f'(총자산: {get_effective_budget():,}원 | 투자중: {get_invested_capital():,}원)'
     ]
@@ -319,7 +321,7 @@ def morning_routine():
                 dip_met = _check_dip_entry(code, relaxed=relaxed)
                 if dip_met:
                     msg_lines.append(_execute_buy(
-                        s, available_cash, total_signals,
+                        s, available_cash, budget_slots,
                         kospi_trend=kospi_trend, dip_entry_used=not relaxed,
                         exposure_factor=exposure_factor, crawl_source=crawl_source,
                     ))
@@ -468,14 +470,15 @@ class InsufficientBudgetError(Exception):
     """종목당 배분 예산으로 1주도 살 수 없는 고가주 — 시스템 오류가 아닌 정상 스킵 사유."""
 
 
-def _execute_buy(s: dict, available_cash: int, total_signals: int,
+def _execute_buy(s: dict, available_cash: int, budget_slots: int,
                  kospi_trend: bool = True, dip_entry_used: bool = True,
                  exposure_factor: float = 1.0, crawl_source: str = '') -> str:
-    """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환."""
+    """단일 종목 매수 실행. 성공 메시지 또는 에러 메시지 반환.
+    budget_slots: 종목당 예산 분모(빈 슬롯 수) — 신호 수가 아님(집중 방지)."""
     code = s['code']
     info = get_current_price(code)
     price = info['price']
-    qty = calc_quantity(price, total_signals, effective_budget=available_cash)
+    qty = calc_quantity(price, budget_slots, effective_budget=available_cash)
     # 증권사 실제 주문가능금액으로 상한 (예수금≠주문가능, T+2 미결제 거부 방지). 조회 실패 시 미적용.
     try:
         from kis_balance import get_orderable_cash
@@ -486,7 +489,7 @@ def _execute_buy(s: dict, available_cash: int, total_signals: int,
         pass
     if qty <= 0:
         raise InsufficientBudgetError(
-            f"종목당 {available_cash // total_signals:,}원으로 {price:,}원짜리 1주 매수 불가"
+            f"종목당 {available_cash // budget_slots:,}원으로 {price:,}원짜리 1주 매수 불가"
         )
     buy_stock(code, qty)
     now = datetime.now()
